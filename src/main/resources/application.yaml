@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: telemetry-ingestion-persister
+  devtools:
+    restart:
+      enabled: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+kafka:
+  consumer:
+    topic: iot-devices-data
+    poll-timeout-ms: 500
+    restart-timeout-ms: 10000
+    executor-termination-timeout-ms: 5000
+    properties:
+      bootstrap.servers: localhost:9092
+      group.id: iot-devices-telemetry
+      key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value.deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+      schema.registry.url: http://localhost:8081
+      specific.avro.reader: true
+      auto.offset.reset: earliest
+      enable.auto.commit: false
+      max.poll.records: 500
+      max.poll.interval: 300000
+      fetch.min.bytes: 1
+      fetch.max.wait.ms: 5000
+      value.subject.name.strategy: io.confluent.kafka.serializers.subject.TopicRecordNameStrategy
+parallel.patcher:
+  threads.amount: 10
+  executor.termination.time.ms: 5000
+persister:
+  retries:
+    max.attempts: 15
+    wait.duration.ms: 3000
