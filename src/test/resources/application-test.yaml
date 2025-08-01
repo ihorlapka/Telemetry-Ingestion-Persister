@@ -20,7 +20,7 @@ kafka:
     executor-termination-timeout-ms: 5000
     properties:
       bootstrap.server: localhost:9092
-      group.id: iot-devices-telemetry
+      group.id: telemetry-events
       key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value.deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
       schema.registry.url: mock://my-scope:8081
