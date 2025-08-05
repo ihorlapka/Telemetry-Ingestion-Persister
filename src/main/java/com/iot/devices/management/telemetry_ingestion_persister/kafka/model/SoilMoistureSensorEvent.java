@@ -1,6 +1,5 @@
 package com.iot.devices.management.telemetry_ingestion_persister.kafka.model;
 
-import com.iot.devices.ThermostatMode;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceStatus;
 import lombok.*;
 import org.springframework.data.annotation.Id;
@@ -16,20 +15,18 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(of = {"deviceId", "lastUpdated"})
-@Document(collection = ThermostatEvent.THERMOSTATS_COLLECTION)
-public class ThermostatEvent implements TelemetryEvent {
+@Document(collection = SoilMoistureSensorEvent.SOIL_MOISTER_SENSORS_COLLECTION)
+public class SoilMoistureSensorEvent implements TelemetryEvent {
 
-    public static final String THERMOSTATS_COLLECTION = "thermostats";
+    public static final String SOIL_MOISTER_SENSORS_COLLECTION = "soil_moisture_sensors";
     @Id
     private UUID deviceId;
 
-    private Float currentTemperature;
+    private Float moisturePercentage;
 
-    private Float targetTemperature;
+    private Float soilTemperature;
 
-    private Float humidity;
-
-    private ThermostatMode mode;
+    private Integer batteryLevel;
 
     private DeviceStatus status;
 

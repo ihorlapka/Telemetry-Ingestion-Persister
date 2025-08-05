@@ -1,6 +1,5 @@
 package com.iot.devices.management.telemetry_ingestion_persister.kafka.model;
 
-import com.iot.devices.ThermostatMode;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceStatus;
 import lombok.*;
 import org.springframework.data.annotation.Id;
@@ -16,20 +15,22 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(of = {"deviceId", "lastUpdated"})
-@Document(collection = ThermostatEvent.THERMOSTATS_COLLECTION)
-public class ThermostatEvent implements TelemetryEvent {
+@Document(collection = SmartLightEvent.SMART_LIGHTS_COLLECTION)
+public class SmartLightEvent implements TelemetryEvent{
 
-    public static final String THERMOSTATS_COLLECTION = "thermostats";
+    public static final String SMART_LIGHTS_COLLECTION = "smart_light";
     @Id
     private UUID deviceId;
 
-    private Float currentTemperature;
+    private Boolean isOn;
 
-    private Float targetTemperature;
+    private Integer brightness;
 
-    private Float humidity;
+    private String colour;
 
-    private ThermostatMode mode;
+    private String mode;
+
+    private Float powerConsumption;
 
     private DeviceStatus status;
 

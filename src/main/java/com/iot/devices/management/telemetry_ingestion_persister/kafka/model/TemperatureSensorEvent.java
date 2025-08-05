@@ -16,20 +16,20 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(of = {"deviceId", "lastUpdated"})
-@Document(collection = ThermostatEvent.THERMOSTATS_COLLECTION)
-public class ThermostatEvent implements TelemetryEvent {
+@Document(collection = TemperatureSensorEvent.TEMPERATURE_SENSORS_COLLECTION)
+public class TemperatureSensorEvent implements TelemetryEvent {
 
-    public static final String THERMOSTATS_COLLECTION = "thermostats";
+    public static final String TEMPERATURE_SENSORS_COLLECTION = "temperature_sensors";
     @Id
     private UUID deviceId;
 
-    private Float currentTemperature;
-
-    private Float targetTemperature;
+    private Float temperature;
 
     private Float humidity;
 
-    private ThermostatMode mode;
+    private Float pressure;
+
+    private String unit;
 
     private DeviceStatus status;
 

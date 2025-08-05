@@ -1,10 +1,7 @@
 package com.iot.devices.management.telemetry_ingestion_persister.persictence;
 
-import com.iot.devices.DoorSensor;
-import com.iot.devices.Thermostat;
-import com.iot.devices.management.telemetry_ingestion_persister.kafka.model.DoorSensorEvent;
-import com.iot.devices.management.telemetry_ingestion_persister.kafka.model.TelemetryEvent;
-import com.iot.devices.management.telemetry_ingestion_persister.kafka.model.ThermostatEvent;
+import com.iot.devices.*;
+import com.iot.devices.management.telemetry_ingestion_persister.kafka.model.*;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType;
 import com.mongodb.*;
 import com.mongodb.bulk.BulkWriteError;
@@ -25,7 +22,12 @@ import java.util.*;
 import java.util.function.BiFunction;
 
 import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.DoorSensorEvent.DOOR_SENSORS_COLLECTION;
-import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.ThermostatEvent.THERMOSTATS;
+import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.EnergyMeterEvent.ENERGY_METERS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.SmartLightEvent.SMART_LIGHTS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.SmartPlugEvent.SMART_PLUGS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.SoilMoistureSensorEvent.SOIL_MOISTER_SENSORS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.TemperatureSensorEvent.TEMPERATURE_SENSORS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.ThermostatEvent.THERMOSTATS_COLLECTION;
 import static com.iot.devices.management.telemetry_ingestion_persister.mapping.EventsMapper.*;
 import static com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType.getDeviceTypeByName;
 import static java.lang.Thread.sleep;
@@ -50,10 +52,27 @@ public class TelemetryPersister {
             final DeviceType deviceType = entry.getKey();
             final List<ConsumerRecord<String, SpecificRecord>> recordsPerType = entry.getValue();
             switch (deviceType) {
-                case THERMOSTAT -> persistWithRetries(recordsPerType, ThermostatEvent.class, offsets, THERMOSTATS,
-                        (t, offset) -> mapThermostat((Thermostat) t, offset));
-                case DOOR_SENSOR -> persistWithRetries(recordsPerType, DoorSensorEvent.class, offsets, DOOR_SENSORS_COLLECTION,
-                        (ds, offset) -> mapDoorSensor((DoorSensor) ds, offset));
+                case THERMOSTAT ->
+                        persistWithRetries(recordsPerType, ThermostatEvent.class, offsets, THERMOSTATS_COLLECTION,
+                                (t, offset) -> mapThermostat((Thermostat) t, offset));
+                case DOOR_SENSOR ->
+                        persistWithRetries(recordsPerType, DoorSensorEvent.class, offsets, DOOR_SENSORS_COLLECTION,
+                                (ds, offset) -> mapDoorSensor((DoorSensor) ds, offset));
+                case SMART_LIGHT ->
+                        persistWithRetries(recordsPerType, SmartLightEvent.class, offsets, SMART_LIGHTS_COLLECTION,
+                                (sl, offset) -> mapSmartLight((SmartLight) sl, offset));
+                case ENERGY_METER ->
+                        persistWithRetries(recordsPerType, EnergyMeterEvent.class, offsets, ENERGY_METERS_COLLECTION,
+                                (em, offset) -> mapEnergyMeter((EnergyMeter) em, offset));
+                case SMART_PLUG ->
+                        persistWithRetries(recordsPerType, SmartPlugEvent.class, offsets, SMART_PLUGS_COLLECTION,
+                                (sp, offset) -> mapSmartPlug((SmartPlug) sp, offset));
+                case TEMPERATURE_SENSOR ->
+                        persistWithRetries(recordsPerType, TemperatureSensorEvent.class, offsets, TEMPERATURE_SENSORS_COLLECTION,
+                                (sp, offset) -> mapTemperatureSensor((TemperatureSensor) sp, offset));
+                case SOIL_MOISTURE_SENSOR ->
+                        persistWithRetries(recordsPerType, SoilMoistureSensorEvent.class, offsets, SOIL_MOISTER_SENSORS_COLLECTION,
+                                (sms, offset) -> mapSoilMoistureSensor((SoilMoistureSensor) sms, offset));
                 //TODO: add rest device types
                 default -> throw new IllegalArgumentException("Unknown device type detected");
             }
@@ -66,7 +85,7 @@ public class TelemetryPersister {
     }
 
     private <T extends SpecificRecord> void persistWithRetries(List<ConsumerRecord<String, T>> deviceTypeRecords, Class<? extends TelemetryEvent> clazz,
-                                                    Set<Long> offsets, String collectionName, BiFunction<T, Long, TelemetryEvent> mapping) {
+                                                               Set<Long> offsets, String collectionName, BiFunction<T, Long, TelemetryEvent> mapping) {
         final List<TelemetryEvent> filteredEvents = new ArrayList<>();
         int currentTry = 0;
         Exception lastException = null;
@@ -111,7 +130,7 @@ public class TelemetryPersister {
                 currentTry++;
             } catch (Exception e) {
                 log.error("A non-retriable error occurred while persisting record. Failing immediately.", e);
-//                kpiMetricLogger.incNonRetriableErrorsCount();
+//                kpiMetricLogger.incNonRetriableErrorsCount(); //TODO: implement!
 //                if (!filteredEvents.isEmpty()) {
 //                    deadLetterProducer.send(filteredEvents);
 //                }

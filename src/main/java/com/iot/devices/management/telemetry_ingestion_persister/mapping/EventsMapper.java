@@ -1,9 +1,7 @@
 package com.iot.devices.management.telemetry_ingestion_persister.mapping;
 
-import com.iot.devices.DoorSensor;
-import com.iot.devices.Thermostat;
-import com.iot.devices.management.telemetry_ingestion_persister.kafka.model.DoorSensorEvent;
-import com.iot.devices.management.telemetry_ingestion_persister.kafka.model.ThermostatEvent;
+import com.iot.devices.*;
+import com.iot.devices.management.telemetry_ingestion_persister.kafka.model.*;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceStatus;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DoorState;
 import lombok.experimental.UtilityClass;
@@ -44,6 +42,85 @@ public class EventsMapper {
                         .orElse(null),
                 t.getFirmwareVersion(),
                 t.getLastUpdated(),
+                offset);
+    }
+
+    public static SmartLightEvent mapSmartLight(SmartLight sl, long offset) {
+        return new SmartLightEvent(
+                UUID.fromString(sl.getDeviceId()),
+                sl.getIsOn(),
+                sl.getBrightness(),
+                sl.getColor(),
+                ofNullable(sl.getMode())
+                        .map(Enum::name)
+                        .orElse(null),
+                sl.getPowerConsumption(),
+                ofNullable(sl.getStatus())
+                        .map(s -> DeviceStatus.valueOf(s.name()))
+                        .orElse(null),
+                sl.getFirmwareVersion(),
+                sl.getLastUpdated(),
+                offset);
+    }
+
+    public static EnergyMeterEvent mapEnergyMeter(EnergyMeter em, long offset) {
+        return new EnergyMeterEvent(
+                UUID.fromString(em.getDeviceId()),
+                em.getVoltage(),
+                em.getCurrent(),
+                em.getPower(),
+                em.getEnergyConsumed(),
+                ofNullable(em.getStatus())
+                        .map(s -> DeviceStatus.valueOf(s.name()))
+                        .orElse(null),
+                em.getFirmwareVersion(),
+                em.getLastUpdated(),
+                offset);
+    }
+
+    public static SmartPlugEvent mapSmartPlug(SmartPlug em, long offset) {
+        return new SmartPlugEvent(
+                UUID.fromString(em.getDeviceId()),
+                em.getIsOn(),
+                em.getVoltage(),
+                em.getCurrent(),
+                em.getPowerUsage(),
+                ofNullable(em.getStatus())
+                        .map(s -> DeviceStatus.valueOf(s.name()))
+                        .orElse(null),
+                em.getFirmwareVersion(),
+                em.getLastUpdated(),
+                offset);
+    }
+
+    public static TemperatureSensorEvent mapTemperatureSensor(TemperatureSensor ts, long offset) {
+        return new TemperatureSensorEvent(
+                UUID.fromString(ts.getDeviceId()),
+                ts.getTemperature(),
+                ts.getHumidity(),
+                ts.getPressure(),
+                ofNullable(ts.getUnit())
+                        .map(Enum::name)
+                        .orElse(null),
+                ofNullable(ts.getStatus())
+                        .map(s -> DeviceStatus.valueOf(s.name()))
+                        .orElse(null),
+                ts.getFirmwareVersion(),
+                ts.getLastUpdated(),
+                offset);
+    }
+
+    public static SoilMoistureSensorEvent mapSoilMoistureSensor(SoilMoistureSensor sms, long offset) {
+        return new SoilMoistureSensorEvent(
+                UUID.fromString(sms.getDeviceId()),
+                sms.getMoisturePercentage(),
+                sms.getSoilTemperature(),
+                sms.getBatteryLevel(),
+                ofNullable(sms.getStatus())
+                        .map(s -> DeviceStatus.valueOf(s.name()))
+                        .orElse(null),
+                sms.getFirmwareVersion(),
+                sms.getLastUpdated(),
                 offset);
     }
 }
