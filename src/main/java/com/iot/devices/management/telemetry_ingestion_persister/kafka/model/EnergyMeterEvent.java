@@ -19,7 +19,7 @@ import java.util.UUID;
 @Document(collection = EnergyMeterEvent.ENERGY_METERS_COLLECTION)
 public class EnergyMeterEvent implements TelemetryEvent{
 
-    public static final String ENERGY_METERS_COLLECTION = "energy_meter";
+    public static final String ENERGY_METERS_COLLECTION = "energy_meters";
     @Id
     private UUID deviceId;
 

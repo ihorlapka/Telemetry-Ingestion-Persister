@@ -41,6 +41,9 @@ import static org.springframework.data.mongodb.core.BulkOperations.BulkMode.UNOR
 @RequiredArgsConstructor
 public class TelemetryPersister {
 
+    public static final String ID_FIELD = "_id";
+    public static final String LAST_UPDATED_FIELD = "lastUpdated";
+
     private final RetryProperties retryProperties;
     private final MongoTemplate mongoTemplate;
 
@@ -149,11 +152,11 @@ public class TelemetryPersister {
 
     private List<? extends TelemetryEvent> findAlreadyPresentEventsInDb(Class<? extends TelemetryEvent> clazz, List<TelemetryEvent> events) {
         final List<Criteria> criteriaList = events.stream()
-                .map(event -> Criteria.where("_id").is(event.getDeviceId()).and("lastUpdated").is(event.getLastUpdated()))
+                .map(event -> Criteria.where(ID_FIELD).is(event.getDeviceId()).and(LAST_UPDATED_FIELD).is(event.getLastUpdated()))
                 .toList();
         final Query query = new Query(new Criteria().orOperator(criteriaList));
-        query.fields().include("_id");
-        query.fields().include("lastUpdated");
+        query.fields().include(ID_FIELD);
+        query.fields().include(LAST_UPDATED_FIELD);
         return mongoTemplate.find(query, clazz);
     }
 

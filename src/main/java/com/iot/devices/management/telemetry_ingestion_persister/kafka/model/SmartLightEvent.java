@@ -18,7 +18,7 @@ import java.util.UUID;
 @Document(collection = SmartLightEvent.SMART_LIGHTS_COLLECTION)
 public class SmartLightEvent implements TelemetryEvent{
 
-    public static final String SMART_LIGHTS_COLLECTION = "smart_light";
+    public static final String SMART_LIGHTS_COLLECTION = "smart_lights";
     @Id
     private UUID deviceId;
 
