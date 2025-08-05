@@ -3,12 +3,12 @@ package com.iot.devices.management.telemetry_ingestion_persister.kafka;
 import com.iot.devices.*;
 import com.iot.devices.management.telemetry_ingestion_persister.health.HealthConfig;
 import com.iot.devices.management.telemetry_ingestion_persister.kafka.properties.KafkaConsumerProperties;
-import com.iot.devices.management.telemetry_ingestion_persister.persictence.Persister;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.TelemetryPersister;
 import io.micrometer.core.instrument.MockClock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.specific.SpecificRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -28,17 +28,12 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 
 import static com.iot.devices.DoorState.OPEN;
 import static java.util.Arrays.asList;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.timeout;
 
@@ -60,7 +55,7 @@ import static org.mockito.Mockito.timeout;
 class KafkaConsumerRunnerTest {
 
     @MockitoBean
-    Persister persister;
+    TelemetryPersister persister;
 
     @Autowired
     KafkaConsumerProperties consumerProperties;
@@ -68,7 +63,7 @@ class KafkaConsumerRunnerTest {
     TestKafkaProducer kafkaProducer;
 
     @Captor
-    ArgumentCaptor<ConsumerRecords<String, SpecificRecord>> recordsCaptor;
+    ArgumentCaptor<List<ConsumerRecord<String, SpecificRecord>>> recordsCaptor;
 
     @Container
     static KafkaContainer kafkaContainer = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.9.0"));
@@ -115,7 +110,7 @@ class KafkaConsumerRunnerTest {
         kafkaProducer.sendMessage(smartPlug, deviceId3);
 
         verify(persister, timeout(3000)).persist(recordsCaptor.capture());
-        List<ConsumerRecords<String, SpecificRecord>> receivedMessages = recordsCaptor.getAllValues();
+        List<List<ConsumerRecord<String, SpecificRecord>>> receivedMessages = recordsCaptor.getAllValues();
 
 //        assertEquals(3, receivedMessages.getFirst().size());
 //        assertEquals(doorSensor, receivedMessages.getFirst().get(deviceId1).value());
@@ -151,7 +146,7 @@ class KafkaConsumerRunnerTest {
         kafkaProducer.sendMessage(smartPlug, deviceId3);
 
         verify(persister, timeout(30000).atLeast(4)).persist(recordsCaptor.capture());
-        List<ConsumerRecords<String, SpecificRecord>> receivedMessages = recordsCaptor.getAllValues();
+        List<List<ConsumerRecord<String, SpecificRecord>>> receivedMessages = recordsCaptor.getAllValues();
 
 //        Map<String, SpecificRecord> messageById = receivedMessages.stream().map(Map::values).flatMap(Collection::stream)
 //                .filter(x -> deviceIds.contains(x.key()))

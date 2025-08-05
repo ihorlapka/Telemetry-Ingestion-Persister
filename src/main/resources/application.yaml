@@ -17,7 +17,7 @@ kafka:
     executor-termination-timeout-ms: 5000
     properties:
       bootstrap.servers: localhost:9092
-      group.id: iot-devices-telemetry
+      group.id: telemetry-events
       key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value.deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
       schema.registry.url: http://localhost:8081
@@ -29,9 +29,6 @@ kafka:
       fetch.min.bytes: 1
       fetch.max.wait.ms: 5000
       value.subject.name.strategy: io.confluent.kafka.serializers.subject.TopicRecordNameStrategy
-parallel.patcher:
-  threads.amount: 10
-  executor.termination.time.ms: 5000
 persister:
   retries:
     max.attempts: 15

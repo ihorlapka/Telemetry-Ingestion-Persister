@@ -1,13 +1,10 @@
-package com.iot.devices.management.telemetry_ingestion_persister.persictence;
-
+package com.iot.devices.management.telemetry_ingestion_persister.kafka.model;
 
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceStatus;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DoorState;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.format.annotation.DateTimeFormat;
 
@@ -18,9 +15,11 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "door_sensors")
-public class DoorSensorEvent {
+@EqualsAndHashCode(of = {"deviceId", "lastUpdated"})
+@Document(collection = DoorSensorEvent.DOOR_SENSORS_COLLECTION)
+public class DoorSensorEvent implements TelemetryEvent {
 
+    public static final String DOOR_SENSORS_COLLECTION = "door_sensors";
     @Id
     private UUID deviceId;
 
@@ -39,4 +38,7 @@ public class DoorSensorEvent {
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private Instant lastUpdated;
+
+    @Transient
+    private Long offset;
 }

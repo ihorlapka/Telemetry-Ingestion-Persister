@@ -1,7 +1,7 @@
 package com.iot.devices.management.telemetry_ingestion_persister.kafka;
 
 import com.iot.devices.management.telemetry_ingestion_persister.kafka.properties.KafkaConsumerProperties;
-import com.iot.devices.management.telemetry_ingestion_persister.persictence.Persister;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.TelemetryPersister;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
 import jakarta.annotation.PostConstruct;
@@ -20,9 +20,11 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
 import static java.time.temporal.ChronoUnit.MILLIS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.stream.Collectors.toMap;
 
 @Slf4j
 @Component
@@ -34,7 +36,7 @@ public class KafkaConsumerRunner {
     private volatile boolean isShutdown = false;
     private volatile boolean isSubscribed = false;
 
-    private final Persister persister;
+    private final TelemetryPersister telemetryPersister;
     private final KafkaConsumerProperties consumerProperties;
     private final AtomicBoolean kafkaConsumerStatusMonitor;
     private final MeterRegistry meterRegistry;
@@ -55,8 +57,15 @@ public class KafkaConsumerRunner {
                     subscribe();
                 }
                 final ConsumerRecords<String, SpecificRecord> records = kafkaConsumer.poll(Duration.of(consumerProperties.getPollTimeoutMs(), MILLIS));
-                final Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = persister.persist(records);
+                final Set<TopicPartition> recordsPartitions = records.partitions();
+                final Map<TopicPartition, List<ConsumerRecord<String, SpecificRecord>>> recordsPerPartition = recordsPartitions.stream()
+                        .collect(toMap(Function.identity(), records::records));
 
+                final Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>(recordsPerPartition.size());
+                for (Map.Entry<TopicPartition, List<ConsumerRecord<String, SpecificRecord>>> entry : recordsPerPartition.entrySet()) {
+                    final Optional<OffsetAndMetadata> offsetToCommit = telemetryPersister.persist(entry.getValue());
+                    offsetToCommit.ifPresent(offset -> offsetsToCommit.put(entry.getKey(), offset));
+                }
                 if (!offsetsToCommit.isEmpty()) {
                     kafkaConsumer.commitAsync(offsetsToCommit, getOffsetCommitCallback());
                 }
@@ -96,7 +105,6 @@ public class KafkaConsumerRunner {
             }
         });
     }
-
 
 
     private OffsetCommitCallback getOffsetCommitCallback() {
