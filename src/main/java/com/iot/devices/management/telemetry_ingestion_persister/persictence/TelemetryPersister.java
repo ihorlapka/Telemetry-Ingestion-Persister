@@ -76,7 +76,6 @@ public class TelemetryPersister {
                 case SOIL_MOISTURE_SENSOR ->
                         persistWithRetries(recordsPerType, SoilMoistureSensorEvent.class, offsets, SOIL_MOISTER_SENSORS_COLLECTION,
                                 (sms, offset) -> mapSoilMoistureSensor((SoilMoistureSensor) sms, offset));
-                //TODO: add rest device types
                 default -> throw new IllegalArgumentException("Unknown device type detected");
             }
         }

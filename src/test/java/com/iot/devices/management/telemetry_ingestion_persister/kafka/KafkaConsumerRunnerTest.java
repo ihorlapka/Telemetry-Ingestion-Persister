@@ -28,12 +28,16 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 import static com.iot.devices.DoorState.OPEN;
 import static java.util.Arrays.asList;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.timeout;
 
@@ -112,10 +116,16 @@ class KafkaConsumerRunnerTest {
         verify(persister, timeout(3000)).persist(recordsCaptor.capture());
         List<List<ConsumerRecord<String, SpecificRecord>>> receivedMessages = recordsCaptor.getAllValues();
 
-//        assertEquals(3, receivedMessages.getFirst().size());
-//        assertEquals(doorSensor, receivedMessages.getFirst().get(deviceId1).value());
-//        assertEquals(thermostat, receivedMessages.getFirst().get(deviceId2).value());
-//        assertEquals(smartPlug, receivedMessages.getFirst().get(deviceId3).value());
+        assertEquals(3, receivedMessages.getFirst().size());
+        assertEquals(doorSensor, receivedMessages.getFirst().stream()
+                .filter(x -> x.key().equals(deviceId1))
+                .map(ConsumerRecord::value).findFirst().get());
+        assertEquals(thermostat, receivedMessages.getFirst().stream()
+                .filter(x -> x.key().equals(deviceId2))
+                .map(ConsumerRecord::value).findFirst().get());
+        assertEquals(smartPlug, receivedMessages.getFirst().stream()
+                .filter(x -> x.key().equals(deviceId3))
+                .map(ConsumerRecord::value).findFirst().get());
     }
 
     @Test
@@ -148,12 +158,13 @@ class KafkaConsumerRunnerTest {
         verify(persister, timeout(30000).atLeast(4)).persist(recordsCaptor.capture());
         List<List<ConsumerRecord<String, SpecificRecord>>> receivedMessages = recordsCaptor.getAllValues();
 
-//        Map<String, SpecificRecord> messageById = receivedMessages.stream().map(Map::values).flatMap(Collection::stream)
-//                .filter(x -> deviceIds.contains(x.key()))
-//                .collect(Collectors.toMap(ConsumerRecord::key, ConsumerRecord::value, (a, b) -> b));
-//        assertEquals(3, messageById.size());
-//        assertEquals(doorSensor, messageById.get(deviceId1));
-//        assertEquals(thermostat, messageById.get(deviceId2));
-//        assertEquals(smartPlug, messageById.get(deviceId3));
+        Map<String, SpecificRecord> messageById = receivedMessages.stream()
+                .flatMap(Collection::stream)
+                .filter(x -> deviceIds.contains(x.key()))
+                .collect(Collectors.toMap(ConsumerRecord::key, ConsumerRecord::value, (a, b) -> b));
+        assertEquals(3, messageById.size());
+        assertEquals(doorSensor, messageById.get(deviceId1));
+        assertEquals(thermostat, messageById.get(deviceId2));
+        assertEquals(smartPlug, messageById.get(deviceId3));
     }
 }
