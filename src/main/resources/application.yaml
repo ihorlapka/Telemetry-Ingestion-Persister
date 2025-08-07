@@ -29,6 +29,24 @@ kafka:
       fetch.min.bytes: 1
       fetch.max.wait.ms: 5000
       value.subject.name.strategy: io.confluent.kafka.serializers.subject.TopicRecordNameStrategy
+  producer:
+    topic: dead-letter-telemetries-persists
+    executor-termination-timeout-ms: 5000
+    properties:
+      bootstrap.servers: localhost:9092
+      key.serializer: org.apache.kafka.common.serialization.StringSerializer
+      value.serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      schema.registry.url: http://localhost:8081
+      acks: all
+      linger.ms: 10
+      batch.size: 32768
+      compression.type: snappy
+      retries: 3
+      retry.backoff.ms: 100
+      enable.idempotence: true
+      request.timeout.ms: 15000
+      delivery.timeout.ms: 30000
+      client.id: dead-letter-persists-producer
 persister:
   retries:
     max.attempts: 15

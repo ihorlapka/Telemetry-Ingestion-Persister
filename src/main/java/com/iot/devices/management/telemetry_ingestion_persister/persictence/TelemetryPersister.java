@@ -1,8 +1,9 @@
 package com.iot.devices.management.telemetry_ingestion_persister.persictence;
 
 import com.iot.devices.*;
-import com.iot.devices.management.telemetry_ingestion_persister.kafka.model.*;
+import com.iot.devices.management.telemetry_ingestion_persister.kafka.DeadLetterProducer;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.*;
 import com.mongodb.*;
 import com.mongodb.bulk.BulkWriteError;
 import com.mongodb.bulk.BulkWriteResult;
@@ -12,6 +13,7 @@ import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.springframework.dao.TransientDataAccessException;
+import org.springframework.data.mongodb.InvalidMongoDbApiUsageException;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -21,13 +23,13 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 import java.util.function.BiFunction;
 
-import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.DoorSensorEvent.DOOR_SENSORS_COLLECTION;
-import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.EnergyMeterEvent.ENERGY_METERS_COLLECTION;
-import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.SmartLightEvent.SMART_LIGHTS_COLLECTION;
-import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.SmartPlugEvent.SMART_PLUGS_COLLECTION;
-import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.SoilMoistureSensorEvent.SOIL_MOISTER_SENSORS_COLLECTION;
-import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.TemperatureSensorEvent.TEMPERATURE_SENSORS_COLLECTION;
-import static com.iot.devices.management.telemetry_ingestion_persister.kafka.model.ThermostatEvent.THERMOSTATS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.DoorSensorEvent.DOOR_SENSORS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.EnergyMeterEvent.ENERGY_METERS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.SmartLightEvent.SMART_LIGHTS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.SmartPlugEvent.SMART_PLUGS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.SoilMoistureSensorEvent.SOIL_MOISTER_SENSORS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.TemperatureSensorEvent.TEMPERATURE_SENSORS_COLLECTION;
+import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.ThermostatEvent.THERMOSTATS_COLLECTION;
 import static com.iot.devices.management.telemetry_ingestion_persister.mapping.EventsMapper.*;
 import static com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType.getDeviceTypeByName;
 import static java.lang.Thread.sleep;
@@ -46,6 +48,7 @@ public class TelemetryPersister {
 
     private final RetryProperties retryProperties;
     private final MongoTemplate mongoTemplate;
+    private final DeadLetterProducer deadLetterProducer;
 
 
     public Optional<OffsetAndMetadata> persist(List<ConsumerRecord<String, SpecificRecord>> records) {
@@ -110,10 +113,10 @@ public class TelemetryPersister {
                 log.info("Inserted: {} events, target: {}, all offsets will be committed", result.getInsertedCount(), filteredEvents.size());
                 filteredEvents.forEach(event -> offsets.add(event.getOffset()));
                 return;
-            } catch (TransientDataAccessException | MongoSocketException | MongoTimeoutException | MongoWriteException | MongoBulkWriteException e) { //retriable errors
+            } catch (TransientDataAccessException | MongoSocketException | MongoTimeoutException | MongoWriteException | MongoBulkWriteException e) {
                 final List<TelemetryEvent> storedEvents = new ArrayList<>(filteredEvents);
-                if (e instanceof MongoBulkWriteException) {
-                    for (BulkWriteError error : ((MongoBulkWriteException) e).getWriteErrors()) {
+                if (e instanceof MongoBulkWriteException bulkWriteException) {
+                    for (BulkWriteError error : bulkWriteException.getWriteErrors()) {
                         TelemetryEvent failedEvent = filteredEvents.get(error.getIndex());
                         storedEvents.remove(failedEvent);
                         log.warn("Failed to upsert event: {}, error: {}", failedEvent, error.getMessage());
@@ -127,15 +130,15 @@ public class TelemetryPersister {
                 log.warn("Failed to persist on try {}/{}, offsets={}. Waiting {} ms before next retry, events {}",
                         currentTry + 1, retryProperties.getMaxAttempts(), getOffsets(deviceTypeRecords), retryProperties.getWaitDuration(), filteredEvents);
                 filteredEvents.removeAll(storedEvents);
-//                kpiMetricLogger.incRetriesCount();
                 lastException = e;
                 currentTry++;
+            } catch (IllegalArgumentException | NullPointerException | InvalidMongoDbApiUsageException | MongoCommandException e) {
+                log.error("A non-recoverable error occurred while persisting events sending them to dead letter topic", e);
+                if (!filteredEvents.isEmpty()) {
+                    deadLetterProducer.send(filteredEvents);
+                }
             } catch (Exception e) {
                 log.error("A non-retriable error occurred while persisting record. Failing immediately.", e);
-//                kpiMetricLogger.incNonRetriableErrorsCount(); //TODO: implement!
-//                if (!filteredEvents.isEmpty()) {
-//                    deadLetterProducer.send(filteredEvents);
-//                }
                 throw new RuntimeException("Non-retriable error", e);
             }
         }

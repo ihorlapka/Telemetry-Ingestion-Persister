@@ -1,6 +1,5 @@
-package com.iot.devices.management.telemetry_ingestion_persister.kafka.model;
+package com.iot.devices.management.telemetry_ingestion_persister.persictence.model;
 
-import com.iot.devices.ThermostatMode;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceStatus;
 import lombok.*;
 import org.springframework.data.annotation.Id;

@@ -1,4 +1,4 @@
-package com.iot.devices.management.telemetry_ingestion_persister.kafka;
+package com.iot.devices.management.telemetry_ingestion_persister.kafka.properties;
 
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
@@ -13,7 +13,6 @@ import org.springframework.context.annotation.Configuration;
 import java.util.HashMap;
 import java.util.Map;
 
-
 @Slf4j
 @Getter
 @Setter
@@ -23,12 +22,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class KafkaProducerProperties {
 
-    final static String PROPERTIES_PREFIX = "kafka.producer-test";
+    final static String PROPERTIES_PREFIX = "kafka.producer";
 
     private Map<String, String> properties = new HashMap<>();
 
     @Value("${" + PROPERTIES_PREFIX + ".topic}")
     private String topic;
+
+    @Value("${" + PROPERTIES_PREFIX + ".executor-termination-timeout-ms}")
+    private Long executorTerminationTimeoutMs;
 
     @PostConstruct
     private void logProperties() {

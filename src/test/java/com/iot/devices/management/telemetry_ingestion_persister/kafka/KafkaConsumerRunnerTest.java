@@ -75,7 +75,7 @@ class KafkaConsumerRunnerTest {
     @DynamicPropertySource
     static void kafkaProps(DynamicPropertyRegistry registry) {
         registry.add("kafka.consumer.properties.bootstrap.servers", kafkaContainer::getBootstrapServers);
-        registry.add("kafka.producer.properties.bootstrap.servers", kafkaContainer::getBootstrapServers);
+        registry.add("kafka.producer-test.properties.bootstrap.servers", kafkaContainer::getBootstrapServers);
     }
 
     @BeforeAll

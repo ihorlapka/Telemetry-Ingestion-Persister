@@ -1,7 +1,6 @@
-package com.iot.devices.management.telemetry_ingestion_persister.kafka.model;
+package com.iot.devices.management.telemetry_ingestion_persister.persictence.model;
 
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceStatus;
-import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DoorState;
 import lombok.*;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.Transient;
@@ -16,23 +15,24 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(of = {"deviceId", "lastUpdated"})
-@Document(collection = DoorSensorEvent.DOOR_SENSORS_COLLECTION)
-public class DoorSensorEvent implements TelemetryEvent {
+@Document(collection = SmartLightEvent.SMART_LIGHTS_COLLECTION)
+public class SmartLightEvent implements TelemetryEvent{
 
-    public static final String DOOR_SENSORS_COLLECTION = "door_sensors";
+    public static final String SMART_LIGHTS_COLLECTION = "smart_lights";
     @Id
     private UUID deviceId;
 
-    private DoorState doorState;
+    private Boolean isOn;
 
-    private Integer batteryLevel;
+    private Integer brightness;
 
-    private Boolean tamperAlert;
+    private String colour;
+
+    private String mode;
+
+    private Float powerConsumption;
 
     private DeviceStatus status;
-
-    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-    private Instant lastOpened;
 
     private String firmwareVersion;
 

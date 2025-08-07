@@ -1,4 +1,4 @@
-package com.iot.devices.management.telemetry_ingestion_persister.kafka.model;
+package com.iot.devices.management.telemetry_ingestion_persister.persictence.model;
 
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceStatus;
 import lombok.*;
@@ -15,22 +15,20 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(of = {"deviceId", "lastUpdated"})
-@Document(collection = SmartLightEvent.SMART_LIGHTS_COLLECTION)
-public class SmartLightEvent implements TelemetryEvent{
+@Document(collection = SmartPlugEvent.SMART_PLUGS_COLLECTION)
+public class SmartPlugEvent implements TelemetryEvent{
 
-    public static final String SMART_LIGHTS_COLLECTION = "smart_lights";
+    public static final String SMART_PLUGS_COLLECTION = "smart_plugs";
     @Id
     private UUID deviceId;
 
     private Boolean isOn;
 
-    private Integer brightness;
+    private Float voltage;
 
-    private String colour;
+    private Float current;
 
-    private String mode;
-
-    private Float powerConsumption;
+    private Float powerUsage;
 
     private DeviceStatus status;
 

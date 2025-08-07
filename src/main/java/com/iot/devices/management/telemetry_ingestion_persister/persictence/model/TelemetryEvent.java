@@ -1,4 +1,4 @@
-package com.iot.devices.management.telemetry_ingestion_persister.kafka.model;
+package com.iot.devices.management.telemetry_ingestion_persister.persictence.model;
 
 import java.time.Instant;
 import java.util.UUID;

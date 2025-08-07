@@ -32,6 +32,13 @@ kafka:
       fetch.min.bytes: 1
       fetch.max.wait.ms: 5000
   producer:
+    topic: dead-letter-telemetries-persists
+    properties:
+      bootstrap.servers: localhost:9092
+      key.serializer: org.apache.kafka.common.serialization.StringSerializer
+      value.serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+      schema.registry.url: mock://my-scope:8081
+  producer-test:
     topic: iot-devices-data
     properties:
       bootstrap.servers: localhost:9092

@@ -1,9 +1,9 @@
 package com.iot.devices.management.telemetry_ingestion_persister.mapping;
 
 import com.iot.devices.*;
-import com.iot.devices.management.telemetry_ingestion_persister.kafka.model.*;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceStatus;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DoorState;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.*;
 import lombok.experimental.UtilityClass;
 
 import java.util.UUID;
