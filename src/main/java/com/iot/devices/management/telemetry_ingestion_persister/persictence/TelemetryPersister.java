@@ -2,6 +2,7 @@ package com.iot.devices.management.telemetry_ingestion_persister.persictence;
 
 import com.iot.devices.*;
 import com.iot.devices.management.telemetry_ingestion_persister.kafka.DeadLetterProducer;
+import com.iot.devices.management.telemetry_ingestion_persister.metrics.KpiMetricLogger;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.*;
 import com.mongodb.*;
@@ -32,6 +33,7 @@ import static com.iot.devices.management.telemetry_ingestion_persister.persicten
 import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.ThermostatEvent.THERMOSTATS_COLLECTION;
 import static com.iot.devices.management.telemetry_ingestion_persister.mapping.EventsMapper.*;
 import static com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType.getDeviceTypeByName;
+import static java.lang.System.currentTimeMillis;
 import static java.lang.Thread.sleep;
 import static java.util.Optional.empty;
 import static java.util.Optional.ofNullable;
@@ -49,6 +51,7 @@ public class TelemetryPersister {
     private final RetryProperties retryProperties;
     private final MongoTemplate mongoTemplate;
     private final DeadLetterProducer deadLetterProducer;
+    private final KpiMetricLogger kpiMetricLogger;
 
 
     public Optional<OffsetAndMetadata> persist(List<ConsumerRecord<String, SpecificRecord>> records) {
@@ -98,6 +101,7 @@ public class TelemetryPersister {
             try {
                 if (currentTry > 0) {
                     sleep(retryProperties.getWaitDuration());
+                    kpiMetricLogger.incRetriesCount();
                 }
                 final List<TelemetryEvent> events = mapEvents(deviceTypeRecords, mapping);
                 final List<? extends TelemetryEvent> existingEvents = findAlreadyPresentEventsInDb(clazz, events);
@@ -109,9 +113,13 @@ public class TelemetryPersister {
                 }
                 final BulkOperations bulkOps = mongoTemplate.bulkOps(UNORDERED, clazz, collectionName);
                 bulkOps.insert(filteredEvents);
+                final long startTime = currentTimeMillis();
                 final BulkWriteResult result = bulkOps.execute();
-                log.info("Inserted: {} events, target: {}, all offsets will be committed", result.getInsertedCount(), filteredEvents.size());
-                filteredEvents.forEach(event -> offsets.add(event.getOffset()));
+                kpiMetricLogger.recordInsertTime(clazz.getSimpleName(), currentTimeMillis() - startTime);
+                kpiMetricLogger.incInsertedEventsInOneOperation(clazz.getSimpleName(), result.getInsertedCount());
+                final List<Long> succeedOffsets = filteredEvents.stream().map(TelemetryEvent::getOffset).toList();
+                offsets.addAll(succeedOffsets);
+                log.info("Inserted: {} {} items, target: {}, offsets {} will be committed", result.getInsertedCount(), clazz.getSimpleName(), filteredEvents.size(), succeedOffsets);
                 return;
             } catch (TransientDataAccessException | MongoSocketException | MongoTimeoutException | MongoWriteException | MongoBulkWriteException e) {
                 final List<TelemetryEvent> storedEvents = new ArrayList<>(filteredEvents);
@@ -119,9 +127,10 @@ public class TelemetryPersister {
                     for (BulkWriteError error : bulkWriteException.getWriteErrors()) {
                         TelemetryEvent failedEvent = filteredEvents.get(error.getIndex());
                         storedEvents.remove(failedEvent);
-                        log.warn("Failed to upsert event: {}, error: {}", failedEvent, error.getMessage());
+                        log.warn("Failed to insert event: {}, error: {}", failedEvent, error.getMessage());
                     }
                     if (!storedEvents.isEmpty()) {
+                        kpiMetricLogger.incStoredEventsDuringError(clazz.getSimpleName(), storedEvents.size());
                         storedEvents.forEach(event -> offsets.add(event.getOffset()));
                         log.info("Persistence of events resulted with error: {}, but some events were stored {}, their offsets may be committed",
                                 e.getMessage(), storedEvents);
@@ -133,12 +142,14 @@ public class TelemetryPersister {
                 lastException = e;
                 currentTry++;
             } catch (IllegalArgumentException | NullPointerException | InvalidMongoDbApiUsageException | MongoCommandException e) {
-                log.error("A non-recoverable error occurred while persisting events sending them to dead letter topic", e);
+                log.error("A non-retriable error occurred while persisting events sending them to dead letter topic", e);
+                kpiMetricLogger.incNonRetriableErrorsCount(e.getClass().getSimpleName());
                 if (!filteredEvents.isEmpty()) {
                     deadLetterProducer.send(filteredEvents);
                 }
             } catch (Exception e) {
-                log.error("A non-retriable error occurred while persisting record. Failing immediately.", e);
+                log.error("Fatal error occurred while persisting record. Failing immediately.", e);
+                kpiMetricLogger.incFatalErrorsCount(e.getClass().getSimpleName());
                 throw new RuntimeException("Non-retriable error", e);
             }
         }
@@ -159,7 +170,13 @@ public class TelemetryPersister {
         final Query query = new Query(new Criteria().orOperator(criteriaList));
         query.fields().include(ID_FIELD);
         query.fields().include(LAST_UPDATED_FIELD);
-        return mongoTemplate.find(query, clazz);
+        final long startTime = currentTimeMillis();
+        List<? extends TelemetryEvent> telemetryEvents = mongoTemplate.find(query, clazz);
+        kpiMetricLogger.recordsFindEventsQueryTime(currentTimeMillis() - startTime);
+        if (!telemetryEvents.isEmpty()) {
+            kpiMetricLogger.incAlreadyStoredEvents(telemetryEvents.size());
+        }
+        return telemetryEvents;
     }
 
     private List<TelemetryEvent> filterPresentEvents(Set<Long> offsets, List<TelemetryEvent> events,
