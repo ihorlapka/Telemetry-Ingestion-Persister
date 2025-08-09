@@ -2,42 +2,54 @@ package com.iot.devices.management.telemetry_ingestion_persister.metrics;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
-import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class PrometheusKpiLogger implements KpiMetricLogger {
 
-    private final AtomicInteger activeThreads = new AtomicInteger(0);
-    private final ConcurrentMap<String, Counter> notUpdatedDevicesCounters = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, Counter> severalUpdatedDevicesCounters = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, Counter> nonRetriableErrorsCounters = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, DistributionSummary> deviceUpdatingTimeSummaries = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Counter> nonRetriableSkippedErrorsCounters = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, DistributionSummary> eventsPersistingTimeSummaries = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, DistributionSummary> findEventsTimeSummaries = new ConcurrentHashMap<>();
 
     private final MeterRegistry meterRegistry;
     private final Counter retriesCounter;
+    private final Counter alreadyStoredEventsCounter;
+    private final Counter insertedEventsCounter;
+    private final Counter insertedEventsDuringErrorCounter;
+    private final Counter fatalErrorsCounter;
 
     public PrometheusKpiLogger(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
 
-        this.retriesCounter = Counter.builder("not_updated_devices_count")
-                .description("The number of retries during patching device")
+        this.retriesCounter = Counter.builder("tip_persistence_retries_count")
+                .description("The number of retries during events storage")
                 .register(meterRegistry);
 
-        Gauge.builder("parallel_persister_active_threads", activeThreads, AtomicInteger::get)
-                .description("The number of threads currently executing tasks")
+        this.alreadyStoredEventsCounter = Counter.builder("tip_already_stored_events_count")
+                .description("The number of events which were already stored during previous app run")
+                .register(meterRegistry);
+
+        this.insertedEventsCounter = Counter.builder("tip_inserted_events_count")
+                .description("The number of events which were stored during one insert operation")
+                .register(meterRegistry);
+
+        this.insertedEventsDuringErrorCounter = Counter.builder("tip_inserted_events_during_error_count")
+                .description("The number of events which were stored during one failed insert operation")
+                .register(meterRegistry);
+
+        this.fatalErrorsCounter = Counter.builder("tip_fatal_errors_count")
+                .description("The number of fatal errors")
                 .register(meterRegistry);
     }
 
     @Override
     public void recordInsertTime(String deviceType, long timeMs) {
-        deviceUpdatingTimeSummaries.computeIfAbsent(deviceType, k ->
-                        DistributionSummary.builder("device_updating_time")
+        eventsPersistingTimeSummaries.computeIfAbsent(deviceType, k ->
+                        DistributionSummary.builder("tip_device_persisting_time")
                                 .description("The time during which patch operation finished successfully")
                                 .tag("deviceType", deviceType)
                                 .register(meterRegistry))
@@ -50,38 +62,43 @@ public class PrometheusKpiLogger implements KpiMetricLogger {
     }
 
     @Override
-    public void incNonRetriableErrorsCount(String errorName) {
-        nonRetriableErrorsCounters.computeIfAbsent(errorName, (error) ->
-                        Counter.builder("non_retriable_errors_count")
-                                .description("The number of non-retriable exceptions")
+    public void incNonRetriableSkippedErrorsCount(String errorName) {
+        nonRetriableSkippedErrorsCounters.computeIfAbsent(errorName, (error) ->
+                        Counter.builder("tip_non_retriable_errors_count")
+                                .description("The number of non-retriable (skipped) exceptions")
                                 .tag("error", error)
                                 .register(meterRegistry))
                 .increment();
     }
 
     @Override
-    public void recordsFindEventsQueryTime(long time) {
-
+    public void recordsFindEventsQueryTime(String eventType, long timeMs) {
+        findEventsTimeSummaries.computeIfAbsent(eventType, k ->
+                        DistributionSummary.builder("tip_find_events_time")
+                                .description("The executions time of find events operation")
+                                .tag("deviceType", eventType)
+                                .register(meterRegistry))
+                .record(timeMs);
     }
 
     @Override
     public void incAlreadyStoredEvents(int alreadyStoredEventsAmount) {
-
+        alreadyStoredEventsCounter.increment();
     }
 
     @Override
     public void incInsertedEventsInOneOperation(String eventType, int insertedCount) {
-
+        insertedEventsCounter.increment();
     }
 
     @Override
     public void incStoredEventsDuringError(String eventType, int storedAmount) {
-
+        insertedEventsDuringErrorCounter.increment();
     }
 
     @Override
     public void incFatalErrorsCount(String errorName) {
-
+        fatalErrorsCounter.increment();
     }
 
 }

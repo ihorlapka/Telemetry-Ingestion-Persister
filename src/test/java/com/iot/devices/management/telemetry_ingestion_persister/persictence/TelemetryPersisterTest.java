@@ -17,14 +17,17 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.bson.BsonDocument;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.mongodb.UncategorizedMongoDbException;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -34,6 +37,8 @@ import static com.iot.devices.DeviceStatus.*;
 import static com.iot.devices.DoorState.CLOSED;
 import static com.iot.devices.DoorState.OPEN;
 import static com.iot.devices.ThermostatMode.*;
+import static com.iot.devices.management.telemetry_ingestion_persister.mapping.EventsMapper.mapSmartPlug;
+import static com.iot.devices.management.telemetry_ingestion_persister.mapping.EventsMapper.mapThermostat;
 import static com.mongodb.bulk.BulkWriteResult.acknowledged;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -134,6 +139,7 @@ class TelemetryPersisterTest {
 
     @Test
     void allSucceeded() {
+        when(mongoTemplate.find(any(Query.class), any())).thenReturn(List.of());
         when(bulkOperationsForDoorSensors.execute()).thenReturn(acknowledged(WriteRequest.Type.INSERT, 4, 0, List.of(), List.of()));
         when(bulkOperationsForThermostats.execute()).thenReturn(acknowledged(WriteRequest.Type.INSERT, 3, 0, List.of(), List.of()));
         when(bulkOperationsForSmartPlug.execute()).thenReturn(acknowledged(WriteRequest.Type.INSERT, 5, 0, List.of(), List.of()));
@@ -150,7 +156,9 @@ class TelemetryPersisterTest {
         verify(bulkOperationsForDoorSensors).insert(anyList());
         verify(bulkOperationsForThermostats).insert(anyList());
         verify(bulkOperationsForSmartPlug).insert(anyList());
-        verify(kpiMetricLogger, times(3)).recordsFindEventsQueryTime(anyLong());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordInsertTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
@@ -160,7 +168,12 @@ class TelemetryPersisterTest {
     }
 
     @Test
-    void thermostatsFailed() {
+    void storingAfterRetries() {
+        lenient().when(mongoTemplate.find(any(Query.class), eq(ThermostatEvent.class))).thenReturn(List.of())
+                        .thenReturn(List.of(mapThermostat(thermostat5, 4), mapThermostat(thermostat6, 5)))
+                        .thenReturn(List.of(mapThermostat(thermostat5, 4), mapThermostat(thermostat6, 5)))
+                        .thenReturn(List.of(mapThermostat(thermostat5, 4), mapThermostat(thermostat6, 5)));
+
         when(bulkOperationsForDoorSensors.execute()).thenReturn(acknowledged(WriteRequest.Type.INSERT, 4, 0, List.of(), List.of()));
 
         BulkWriteError bulkWriteError1 = new BulkWriteError(111, "some msg", new BsonDocument(), 2);
@@ -170,7 +183,7 @@ class TelemetryPersisterTest {
         MongoBulkWriteException mongoBulkWriteException2 = new MongoBulkWriteException(mock(BulkWriteResult.class), List.of(bulkWriteError2), mock(WriteConcernError.class), new ServerAddress(), Set.of());
         MongoBulkWriteException mongoBulkWriteException3 = new MongoBulkWriteException(mock(BulkWriteResult.class), List.of(bulkWriteError3), mock(WriteConcernError.class), new ServerAddress(), Set.of());
         when(bulkOperationsForThermostats.execute()).thenThrow(mongoBulkWriteException1, mongoBulkWriteException2, mongoBulkWriteException3)
-                .thenReturn(acknowledged(WriteRequest.Type.INSERT, 3, 0, List.of(), List.of()));
+                .thenReturn(acknowledged(WriteRequest.Type.INSERT, 1, 0, List.of(), List.of()));
         when(bulkOperationsForSmartPlug.execute()).thenReturn(acknowledged(WriteRequest.Type.INSERT, 5, 0, List.of(), List.of()));
         when(mongoTemplate.bulkOps(eq(UNORDERED), eq(DoorSensorEvent.class), eq(DoorSensorEvent.DOOR_SENSORS_COLLECTION))).thenReturn(bulkOperationsForDoorSensors);
         when(mongoTemplate.bulkOps(eq(UNORDERED), eq(ThermostatEvent.class), eq(ThermostatEvent.THERMOSTATS_COLLECTION))).thenReturn(bulkOperationsForThermostats);
@@ -186,15 +199,73 @@ class TelemetryPersisterTest {
         verify(bulkOperationsForDoorSensors).insert(anyList());
         verify(bulkOperationsForThermostats, times(4)).insert(anyList());
         verify(bulkOperationsForSmartPlug).insert(anyList());
-        verify(kpiMetricLogger, times(6)).recordsFindEventsQueryTime(anyLong());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger, times(4)).recordsFindEventsQueryTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordInsertTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).incInsertedEventsInOneOperation(DoorSensorEvent.class.getSimpleName(), 4);
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(ThermostatEvent.class.getSimpleName(), 3);
+        verify(kpiMetricLogger).incInsertedEventsInOneOperation(ThermostatEvent.class.getSimpleName(), 1);
         verify(kpiMetricLogger).incInsertedEventsInOneOperation(SmartPlugEvent.class.getSimpleName(), 5);
-        verify(kpiMetricLogger, times(2)).incStoredEventsDuringError(ThermostatEvent.class.getSimpleName(), 3);
-        verify(kpiMetricLogger, times(2)).incStoredEventsDuringError(ThermostatEvent.class.getSimpleName(), 2);
+        verify(kpiMetricLogger).incStoredEventsDuringError(ThermostatEvent.class.getSimpleName(), 2);
+        verify(kpiMetricLogger, times(3)).incAlreadyStoredEvents(2);
         verify(kpiMetricLogger, times(3)).incRetriesCount();
+    }
+
+    @Test
+    void nonRetriableError() {
+        when(bulkOperationsForDoorSensors.execute()).thenReturn(acknowledged(WriteRequest.Type.INSERT, 4, 0, List.of(), List.of()));
+        when(bulkOperationsForThermostats.execute()).thenReturn(acknowledged(WriteRequest.Type.INSERT, 3, 0, List.of(), List.of()));
+        when(bulkOperationsForSmartPlug.execute()).thenThrow(NullPointerException.class);
+        when(mongoTemplate.bulkOps(eq(UNORDERED), eq(DoorSensorEvent.class), eq(DoorSensorEvent.DOOR_SENSORS_COLLECTION))).thenReturn(bulkOperationsForDoorSensors);
+        when(mongoTemplate.bulkOps(eq(UNORDERED), eq(ThermostatEvent.class), eq(ThermostatEvent.THERMOSTATS_COLLECTION))).thenReturn(bulkOperationsForThermostats);
+        when(mongoTemplate.bulkOps(eq(UNORDERED), eq(SmartPlugEvent.class), eq(SmartPlugEvent.SMART_PLUGS_COLLECTION))).thenReturn(bulkOperationsForSmartPlug);
+
+        Optional<OffsetAndMetadata> offsetAndMetadata = telemetryPersister.persist(records);
+
+        assertTrue(offsetAndMetadata.isPresent());
+        assertEquals(7, offsetAndMetadata.get().offset());
+        verify(retryProperties, times(3)).getMaxAttempts();
+        verify(mongoTemplate, times(3)).find(any(), any());
+        verify(bulkOperationsForDoorSensors).insert(anyList());
+        verify(bulkOperationsForThermostats).insert(anyList());
+        verify(bulkOperationsForSmartPlug).insert(anyList());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).incInsertedEventsInOneOperation(DoorSensorEvent.class.getSimpleName(), 4);
+        verify(kpiMetricLogger).incInsertedEventsInOneOperation(ThermostatEvent.class.getSimpleName(), 3);
+        verify(kpiMetricLogger).incNonRetriableSkippedErrorsCount(NullPointerException.class.getSimpleName());
+        verify(deadLetterProducer).send(List.of(mapSmartPlug(smartPlug8, 7), mapSmartPlug(smartPlug9, 8), mapSmartPlug(smartPlug10, 9),
+                mapSmartPlug(smartPlug11, 10), mapSmartPlug(smartPlug12, 11)));
+    }
+
+    @Test
+    void fatalError() {
+        when(bulkOperationsForDoorSensors.execute()).thenReturn(acknowledged(WriteRequest.Type.INSERT, 4, 0, List.of(), List.of()));
+        when(bulkOperationsForThermostats.execute()).thenReturn(acknowledged(WriteRequest.Type.INSERT, 3, 0, List.of(), List.of()));
+        when(bulkOperationsForSmartPlug.execute()).thenThrow(UncategorizedMongoDbException.class);
+        when(mongoTemplate.bulkOps(eq(UNORDERED), eq(DoorSensorEvent.class), eq(DoorSensorEvent.DOOR_SENSORS_COLLECTION))).thenReturn(bulkOperationsForDoorSensors);
+        when(mongoTemplate.bulkOps(eq(UNORDERED), eq(ThermostatEvent.class), eq(ThermostatEvent.THERMOSTATS_COLLECTION))).thenReturn(bulkOperationsForThermostats);
+        when(mongoTemplate.bulkOps(eq(UNORDERED), eq(SmartPlugEvent.class), eq(SmartPlugEvent.SMART_PLUGS_COLLECTION))).thenReturn(bulkOperationsForSmartPlug);
+
+        Assertions.assertThrows(RuntimeException.class, () -> telemetryPersister.persist(records));
+
+        verify(retryProperties, times(3)).getMaxAttempts();
+        verify(mongoTemplate, times(3)).find(any(), any());
+        verify(bulkOperationsForDoorSensors).insert(anyList());
+        verify(bulkOperationsForThermostats).insert(anyList());
+        verify(bulkOperationsForSmartPlug).insert(anyList());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).incInsertedEventsInOneOperation(DoorSensorEvent.class.getSimpleName(), 4);
+        verify(kpiMetricLogger).incInsertedEventsInOneOperation(ThermostatEvent.class.getSimpleName(), 3);
+        verify(kpiMetricLogger).incFatalErrorsCount(UncategorizedMongoDbException.class.getSimpleName());
     }
 }

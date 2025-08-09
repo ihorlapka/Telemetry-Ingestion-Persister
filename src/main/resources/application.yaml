@@ -4,6 +4,10 @@ spring:
   devtools:
     restart:
       enabled: false
+  data:
+    mongodb:
+      uuid-representation: standard
+      uri: mongodb+srv://lapkaihor:z6tLeXN5hmAYODcB@telemetries.7k9bnrg.mongodb.net/iot-telemetry-events?retryWrites=true&w=majority
 management:
   endpoints:
     web:

@@ -38,6 +38,7 @@ import static java.lang.Thread.sleep;
 import static java.util.Optional.empty;
 import static java.util.Optional.ofNullable;
 import static java.util.stream.Collectors.groupingBy;
+import static java.util.stream.Collectors.toList;
 import static org.springframework.data.mongodb.core.BulkOperations.BulkMode.UNORDERED;
 
 @Slf4j
@@ -89,12 +90,15 @@ public class TelemetryPersister {
     }
 
     private Map<DeviceType, List<ConsumerRecord<String, SpecificRecord>>> groupRecordsByDeviceType(List<ConsumerRecord<String, SpecificRecord>> records) {
-        return records.stream().collect(groupingBy(record -> getDeviceTypeByName(record.value().getSchema().getName())));
+        return records.stream().collect(groupingBy(
+                record -> getDeviceTypeByName(record.value().getSchema().getName()),
+                LinkedHashMap::new,
+                toList()));
     }
 
     private <T extends SpecificRecord> void persistWithRetries(List<ConsumerRecord<String, T>> deviceTypeRecords, Class<? extends TelemetryEvent> clazz,
                                                                Set<Long> offsets, String collectionName, BiFunction<T, Long, TelemetryEvent> mapping) {
-        final List<TelemetryEvent> filteredEvents = new ArrayList<>();
+        final List<TelemetryEvent> eventsToStore = new ArrayList<>();
         int currentTry = 0;
         Exception lastException = null;
         while (currentTry < retryProperties.getMaxAttempts()) {
@@ -103,58 +107,69 @@ public class TelemetryPersister {
                     sleep(retryProperties.getWaitDuration());
                     kpiMetricLogger.incRetriesCount();
                 }
-                final List<TelemetryEvent> events = mapEvents(deviceTypeRecords, mapping);
+                final List<TelemetryEvent> events = mapEvents(filterRecordsWithCommittedOffsets(deviceTypeRecords, offsets), mapping);
                 final List<? extends TelemetryEvent> existingEvents = findAlreadyPresentEventsInDb(clazz, events);
-                filteredEvents.addAll(filterPresentEvents(offsets, events, existingEvents));
-                if (filteredEvents.isEmpty()) {
+                final List<TelemetryEvent> eventsToBeInserted = filterPresentInDbEvents(offsets, events, existingEvents);
+                if (!eventsToBeInserted.isEmpty()) {
+                    eventsToBeInserted.stream().filter(event -> !eventsToStore.contains(event)).forEach(eventsToStore::add);
+                }
+                if (eventsToStore.isEmpty()) {
                     log.info("All events are already stored, all offsets will be committed");
                     deviceTypeRecords.stream().map(ConsumerRecord::offset).forEach(offsets::add);
                     return;
                 }
                 final BulkOperations bulkOps = mongoTemplate.bulkOps(UNORDERED, clazz, collectionName);
-                bulkOps.insert(filteredEvents);
+                bulkOps.insert(eventsToStore);
                 final long startTime = currentTimeMillis();
                 final BulkWriteResult result = bulkOps.execute();
                 kpiMetricLogger.recordInsertTime(clazz.getSimpleName(), currentTimeMillis() - startTime);
                 kpiMetricLogger.incInsertedEventsInOneOperation(clazz.getSimpleName(), result.getInsertedCount());
-                final List<Long> succeedOffsets = filteredEvents.stream().map(TelemetryEvent::getOffset).toList();
+                final List<Long> succeedOffsets = eventsToStore.stream().map(TelemetryEvent::getOffset).toList();
                 offsets.addAll(succeedOffsets);
-                log.info("Inserted: {} {} items, target: {}, offsets {} will be committed", result.getInsertedCount(), clazz.getSimpleName(), filteredEvents.size(), succeedOffsets);
+                log.info("Inserted: {} {} items, target: {}, offsets {} will be committed",
+                        result.getInsertedCount(), clazz.getSimpleName(), eventsToStore.size(), succeedOffsets);
                 return;
             } catch (TransientDataAccessException | MongoSocketException | MongoTimeoutException | MongoWriteException | MongoBulkWriteException e) {
-                final List<TelemetryEvent> storedEvents = new ArrayList<>(filteredEvents);
+                final List<TelemetryEvent> storedEvents = new ArrayList<>(eventsToStore);
                 if (e instanceof MongoBulkWriteException bulkWriteException) {
                     for (BulkWriteError error : bulkWriteException.getWriteErrors()) {
-                        TelemetryEvent failedEvent = filteredEvents.get(error.getIndex());
+                        TelemetryEvent failedEvent = eventsToStore.get(error.getIndex());
                         storedEvents.remove(failedEvent);
-                        log.warn("Failed to insert event: {}, error: {}", failedEvent, error.getMessage());
                     }
                     if (!storedEvents.isEmpty()) {
                         kpiMetricLogger.incStoredEventsDuringError(clazz.getSimpleName(), storedEvents.size());
                         storedEvents.forEach(event -> offsets.add(event.getOffset()));
-                        log.info("Persistence of events resulted with error: {}, but some events were stored {}, their offsets may be committed",
-                                e.getMessage(), storedEvents);
+                        log.info("Persistence of events resulted with error: {}, but {} events were stored {}, their offsets may be committed",
+                                e.getMessage(), storedEvents.size(), storedEvents);
                     }
                 }
+                eventsToStore.removeAll(storedEvents);
                 log.warn("Failed to persist on try {}/{}, offsets={}. Waiting {} ms before next retry, events {}",
-                        currentTry + 1, retryProperties.getMaxAttempts(), getOffsets(deviceTypeRecords), retryProperties.getWaitDuration(), filteredEvents);
-                filteredEvents.removeAll(storedEvents);
+                        currentTry + 1, retryProperties.getMaxAttempts(), getOffsets(eventsToStore), retryProperties.getWaitDuration(), eventsToStore);
                 lastException = e;
                 currentTry++;
             } catch (IllegalArgumentException | NullPointerException | InvalidMongoDbApiUsageException | MongoCommandException e) {
-                log.error("A non-retriable error occurred while persisting events sending them to dead letter topic", e);
-                kpiMetricLogger.incNonRetriableErrorsCount(e.getClass().getSimpleName());
-                if (!filteredEvents.isEmpty()) {
-                    deadLetterProducer.send(filteredEvents);
+                log.error("A non-retriable error occurred while persisting events, sending them to dead letter topic", e);
+                kpiMetricLogger.incNonRetriableSkippedErrorsCount(e.getClass().getSimpleName());
+                if (!eventsToStore.isEmpty()) {
+                    deadLetterProducer.send(eventsToStore);
                 }
+                return;
             } catch (Exception e) {
-                log.error("Fatal error occurred while persisting record. Failing immediately.", e);
+                log.error("Fatal error occurred while persisting record. Failing immediately, no offsets will be committed", e);
                 kpiMetricLogger.incFatalErrorsCount(e.getClass().getSimpleName());
-                throw new RuntimeException("Non-retriable error", e);
+                throw new RuntimeException("Fatal error", e);
             }
         }
         log.error("All {} attempts to persist record failed.", retryProperties.getMaxAttempts(), lastException);
         throw new RuntimeException("Update failed after max retries.", lastException);
+    }
+
+    private <T extends SpecificRecord> List<ConsumerRecord<String, T>> filterRecordsWithCommittedOffsets(List<ConsumerRecord<String, T>> deviceTypeRecords,
+                                                                                                         Set<Long> offsets) {
+        return deviceTypeRecords.stream()
+                .filter(record -> !offsets.contains(record.offset()))
+                .toList();
     }
 
     private <T extends SpecificRecord, E> List<E> mapEvents(List<ConsumerRecord<String, T>> deviceTypeRecords, BiFunction<T, Long, E> mapping) {
@@ -171,16 +186,16 @@ public class TelemetryPersister {
         query.fields().include(ID_FIELD);
         query.fields().include(LAST_UPDATED_FIELD);
         final long startTime = currentTimeMillis();
-        List<? extends TelemetryEvent> telemetryEvents = mongoTemplate.find(query, clazz);
-        kpiMetricLogger.recordsFindEventsQueryTime(currentTimeMillis() - startTime);
+        final List<? extends TelemetryEvent> telemetryEvents = mongoTemplate.find(query, clazz);
+        kpiMetricLogger.recordsFindEventsQueryTime(clazz.getSimpleName(), currentTimeMillis() - startTime);
         if (!telemetryEvents.isEmpty()) {
             kpiMetricLogger.incAlreadyStoredEvents(telemetryEvents.size());
         }
         return telemetryEvents;
     }
 
-    private List<TelemetryEvent> filterPresentEvents(Set<Long> offsets, List<TelemetryEvent> events,
-                                                     List<? extends TelemetryEvent> existingEvents) {
+    private List<TelemetryEvent> filterPresentInDbEvents(Set<Long> offsets, List<TelemetryEvent> events,
+                                                         List<? extends TelemetryEvent> existingEvents) {
         final List<TelemetryEvent> filteredEvents = new ArrayList<>();
         for (TelemetryEvent event : events) {
             if (existingEvents.contains(event)) {
@@ -193,8 +208,10 @@ public class TelemetryPersister {
         return filteredEvents;
     }
 
-    private <T extends SpecificRecord> List<Long> getOffsets(List<ConsumerRecord<String, T>> deviceTypeRecords) {
-        return deviceTypeRecords.stream().map(ConsumerRecord::offset).toList();
+    private <T extends SpecificRecord> List<Long> getOffsets(List<TelemetryEvent> events) {
+        return events.stream()
+                .map(TelemetryEvent::getOffset)
+                .toList();
     }
 
     private Optional<Long> getMaxConsecutiveOffset(Set<Long> persistedOffsets) {
