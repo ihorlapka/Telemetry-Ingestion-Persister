@@ -52,6 +52,7 @@ public class PrometheusKpiLogger implements KpiMetricLogger {
                         DistributionSummary.builder("tip_device_persisting_time")
                                 .description("The time during which patch operation finished successfully")
                                 .tag("deviceType", deviceType)
+                                .publishPercentiles(0.5, 0.9, 0.99)
                                 .register(meterRegistry))
                 .record(timeMs);
     }
@@ -77,6 +78,7 @@ public class PrometheusKpiLogger implements KpiMetricLogger {
                         DistributionSummary.builder("tip_find_events_time")
                                 .description("The executions time of find events operation")
                                 .tag("deviceType", eventType)
+                                .publishPercentiles(0.5, 0.9, 0.99)
                                 .register(meterRegistry))
                 .record(timeMs);
     }
