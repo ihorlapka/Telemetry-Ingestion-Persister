@@ -2,7 +2,7 @@ package com.iot.devices.management.telemetry_ingestion_persister.kafka;
 
 import com.iot.devices.management.telemetry_ingestion_persister.kafka.properties.KafkaConsumerProperties;
 import com.iot.devices.management.telemetry_ingestion_persister.metrics.KpiMetricLogger;
-import com.iot.devices.management.telemetry_ingestion_persister.persictence.TelemetryPersister;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.TelemetriesPersister;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
 import jakarta.annotation.PostConstruct;
@@ -23,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
+import static java.lang.Thread.sleep;
 import static java.time.temporal.ChronoUnit.MILLIS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.stream.Collectors.toMap;
@@ -37,7 +38,7 @@ public class KafkaConsumerRunner {
     private volatile boolean isShutdown = false;
     private volatile boolean isSubscribed = false;
 
-    private final TelemetryPersister telemetryPersister;
+    private final TelemetriesPersister telemetryPersister;
     private final KafkaConsumerProperties consumerProperties;
     private final AtomicBoolean kafkaConsumerStatusMonitor;
     private final MeterRegistry meterRegistry;
@@ -139,7 +140,7 @@ public class KafkaConsumerRunner {
             }
             if (!isShutdown) {
                 log.info("Waiting {} ms before consumer restart", consumerProperties.getRestartTimeoutMs());
-                Thread.sleep(consumerProperties.getRestartTimeoutMs());
+                sleep(consumerProperties.getRestartTimeoutMs());
             }
         } catch (InterruptedException e) {
             log.error("Failed to wait for consumer restart because thread was interrupted", e);

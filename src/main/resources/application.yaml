@@ -1,13 +1,31 @@
+server:
+  servlet:
+    context-path: /telemetries-persister
+  port: 8082
 spring:
   application:
     name: telemetry-ingestion-persister
   devtools:
     restart:
       enabled: false
+  profiles:
+    active: mongoRepositories
   data:
     mongodb:
       uuid-representation: standard
-      uri: mongodb+srv://lapkaihor:z6tLeXN5hmAYODcB@telemetries.7k9bnrg.mongodb.net/iot-telemetry-events?retryWrites=true&w=majority
+      uri: "my_uri"
+      connect-timeout: 10s
+      socket-timeout: 5s
+      min-connections-per-host: 5
+      max-connections-per-host: 50
+      max-wait-time: 120s
+      heartbeat-frequency: 5s
+mongo:
+  pool:
+    minSize: 5
+    maxSize: 200
+    maxConnectionIdleTime: 30000
+    maxConnectionLifeTime: 300000
 management:
   endpoints:
     web:
@@ -16,7 +34,7 @@ management:
 kafka:
   consumer:
     topic: iot-devices-data
-    poll-timeout-ms: 500
+    poll-timeout-ms: 100
     restart-timeout-ms: 10000
     executor-termination-timeout-ms: 5000
     properties:
@@ -28,9 +46,9 @@ kafka:
       specific.avro.reader: true
       auto.offset.reset: earliest
       enable.auto.commit: false
-      max.poll.records: 500
+      max.poll.records: 10000
       max.poll.interval: 300000
-      fetch.min.bytes: 1
+      fetch.min.bytes: 128
       fetch.max.wait.ms: 5000
       value.subject.name.strategy: io.confluent.kafka.serializers.subject.TopicRecordNameStrategy
   producer:

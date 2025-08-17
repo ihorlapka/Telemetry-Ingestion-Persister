@@ -13,6 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Profile;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.data.mongodb.InvalidMongoDbApiUsageException;
 import org.springframework.data.mongodb.core.BulkOperations;
@@ -32,17 +34,15 @@ import static com.iot.devices.management.telemetry_ingestion_persister.persicten
 import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.TemperatureSensorEvent.TEMPERATURE_SENSORS_COLLECTION;
 import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.ThermostatEvent.THERMOSTATS_COLLECTION;
 import static com.iot.devices.management.telemetry_ingestion_persister.mapping.EventsMapper.*;
-import static com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType.getDeviceTypeByName;
 import static java.lang.System.currentTimeMillis;
 import static java.lang.Thread.sleep;
 import static java.util.Optional.empty;
 import static java.util.Optional.ofNullable;
-import static java.util.stream.Collectors.groupingBy;
-import static java.util.stream.Collectors.toList;
 import static org.springframework.data.mongodb.core.BulkOperations.BulkMode.UNORDERED;
 
 @Slf4j
 @Component
+@Profile("mongoTemplate")
 @RequiredArgsConstructor
 public class TelemetryPersister {
 
@@ -55,45 +55,31 @@ public class TelemetryPersister {
     private final KpiMetricLogger kpiMetricLogger;
 
 
-    public Optional<OffsetAndMetadata> persist(List<ConsumerRecord<String, SpecificRecord>> records) {
-        final Map<DeviceType, List<ConsumerRecord<String, SpecificRecord>>> recordsByEventType = groupRecordsByDeviceType(records);
-        final Set<Long> offsets = new TreeSet<>();
-        for (Map.Entry<DeviceType, List<ConsumerRecord<String, SpecificRecord>>> entry : recordsByEventType.entrySet()) {
-            final DeviceType deviceType = entry.getKey();
-            final List<ConsumerRecord<String, SpecificRecord>> recordsPerType = entry.getValue();
-            switch (deviceType) {
-                case THERMOSTAT ->
-                        persistWithRetries(recordsPerType, ThermostatEvent.class, offsets, THERMOSTATS_COLLECTION,
-                                (t, offset) -> mapThermostat((Thermostat) t, offset));
-                case DOOR_SENSOR ->
-                        persistWithRetries(recordsPerType, DoorSensorEvent.class, offsets, DOOR_SENSORS_COLLECTION,
-                                (ds, offset) -> mapDoorSensor((DoorSensor) ds, offset));
-                case SMART_LIGHT ->
-                        persistWithRetries(recordsPerType, SmartLightEvent.class, offsets, SMART_LIGHTS_COLLECTION,
-                                (sl, offset) -> mapSmartLight((SmartLight) sl, offset));
-                case ENERGY_METER ->
-                        persistWithRetries(recordsPerType, EnergyMeterEvent.class, offsets, ENERGY_METERS_COLLECTION,
-                                (em, offset) -> mapEnergyMeter((EnergyMeter) em, offset));
-                case SMART_PLUG ->
-                        persistWithRetries(recordsPerType, SmartPlugEvent.class, offsets, SMART_PLUGS_COLLECTION,
-                                (sp, offset) -> mapSmartPlug((SmartPlug) sp, offset));
-                case TEMPERATURE_SENSOR ->
-                        persistWithRetries(recordsPerType, TemperatureSensorEvent.class, offsets, TEMPERATURE_SENSORS_COLLECTION,
-                                (sp, offset) -> mapTemperatureSensor((TemperatureSensor) sp, offset));
-                case SOIL_MOISTURE_SENSOR ->
-                        persistWithRetries(recordsPerType, SoilMoistureSensorEvent.class, offsets, SOIL_MOISTER_SENSORS_COLLECTION,
-                                (sms, offset) -> mapSoilMoistureSensor((SoilMoistureSensor) sms, offset));
-                default -> throw new IllegalArgumentException("Unknown device type detected");
-            }
+    public Optional<OffsetAndMetadata> persist(DeviceType deviceType, List<ConsumerRecord<String, SpecificRecord>> recordsPerType, Set<Long> offsets) {
+        switch (deviceType) {
+            case THERMOSTAT ->
+                    persistWithRetries(recordsPerType, ThermostatEvent.class, offsets, THERMOSTATS_COLLECTION,
+                            (t, offset) -> mapThermostat((Thermostat) t, offset));
+            case DOOR_SENSOR ->
+                    persistWithRetries(recordsPerType, DoorSensorEvent.class, offsets, DOOR_SENSORS_COLLECTION,
+                            (ds, offset) -> mapDoorSensor((DoorSensor) ds, offset));
+            case SMART_LIGHT ->
+                    persistWithRetries(recordsPerType, SmartLightEvent.class, offsets, SMART_LIGHTS_COLLECTION,
+                            (sl, offset) -> mapSmartLight((SmartLight) sl, offset));
+            case ENERGY_METER ->
+                    persistWithRetries(recordsPerType, EnergyMeterEvent.class, offsets, ENERGY_METERS_COLLECTION,
+                            (em, offset) -> mapEnergyMeter((EnergyMeter) em, offset));
+            case SMART_PLUG -> persistWithRetries(recordsPerType, SmartPlugEvent.class, offsets, SMART_PLUGS_COLLECTION,
+                    (sp, offset) -> mapSmartPlug((SmartPlug) sp, offset));
+            case TEMPERATURE_SENSOR ->
+                    persistWithRetries(recordsPerType, TemperatureSensorEvent.class, offsets, TEMPERATURE_SENSORS_COLLECTION,
+                            (sp, offset) -> mapTemperatureSensor((TemperatureSensor) sp, offset));
+            case SOIL_MOISTURE_SENSOR ->
+                    persistWithRetries(recordsPerType, SoilMoistureSensorEvent.class, offsets, SOIL_MOISTER_SENSORS_COLLECTION,
+                            (sms, offset) -> mapSoilMoistureSensor((SoilMoistureSensor) sms, offset));
+            default -> throw new IllegalArgumentException("Unknown device type detected");
         }
         return getMaxConsecutiveOffset(offsets).map(OffsetAndMetadata::new);
-    }
-
-    private Map<DeviceType, List<ConsumerRecord<String, SpecificRecord>>> groupRecordsByDeviceType(List<ConsumerRecord<String, SpecificRecord>> records) {
-        return records.stream().collect(groupingBy(
-                record -> getDeviceTypeByName(record.value().getSchema().getName()),
-                LinkedHashMap::new,
-                toList()));
     }
 
     private <T extends SpecificRecord> void persistWithRetries(List<ConsumerRecord<String, T>> deviceTypeRecords, Class<? extends TelemetryEvent> clazz,
