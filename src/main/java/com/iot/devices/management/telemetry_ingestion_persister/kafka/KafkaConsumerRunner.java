@@ -1,6 +1,7 @@
 package com.iot.devices.management.telemetry_ingestion_persister.kafka;
 
 import com.iot.devices.management.telemetry_ingestion_persister.kafka.properties.KafkaConsumerProperties;
+import com.iot.devices.management.telemetry_ingestion_persister.metrics.KpiMetricLogger;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.TelemetryPersister;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
@@ -40,6 +41,7 @@ public class KafkaConsumerRunner {
     private final KafkaConsumerProperties consumerProperties;
     private final AtomicBoolean kafkaConsumerStatusMonitor;
     private final MeterRegistry meterRegistry;
+    private final KpiMetricLogger kpiMetricLogger;
 
     private KafkaConsumer<String, SpecificRecord> kafkaConsumer;
     private KafkaClientMetrics kafkaClientMetrics;
@@ -54,9 +56,11 @@ public class KafkaConsumerRunner {
         while (!isShutdown) {
             try {
                 if (!isSubscribed) {
+                    log.info("Subscribing...");
                     subscribe();
                 }
                 final ConsumerRecords<String, SpecificRecord> records = kafkaConsumer.poll(Duration.of(consumerProperties.getPollTimeoutMs(), MILLIS));
+                kpiMetricLogger.recordRecordsInOnePoll(records.count());
                 final Set<TopicPartition> recordsPartitions = records.partitions();
                 final Map<TopicPartition, List<ConsumerRecord<String, SpecificRecord>>> recordsPerPartition = recordsPartitions.stream()
                         .collect(toMap(Function.identity(), records::records));

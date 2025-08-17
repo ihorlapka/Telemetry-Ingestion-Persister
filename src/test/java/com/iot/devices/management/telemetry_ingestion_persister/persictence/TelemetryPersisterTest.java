@@ -159,12 +159,10 @@ class TelemetryPersisterTest {
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(DoorSensorEvent.class.getSimpleName(), 4);
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(ThermostatEvent.class.getSimpleName(), 3);
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(SmartPlugEvent.class.getSimpleName(), 5);
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger, times(3)).recordAvgEventPersistenceTime(anyLong());
     }
 
     @Test
@@ -202,12 +200,10 @@ class TelemetryPersisterTest {
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger, times(4)).recordsFindEventsQueryTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(DoorSensorEvent.class.getSimpleName(), 4);
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(ThermostatEvent.class.getSimpleName(), 1);
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(SmartPlugEvent.class.getSimpleName(), 5);
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger, times(3)).recordAvgEventPersistenceTime(anyLong());
         verify(kpiMetricLogger).incStoredEventsDuringError(ThermostatEvent.class.getSimpleName(), 2);
         verify(kpiMetricLogger, times(3)).incAlreadyStoredEvents(2);
         verify(kpiMetricLogger, times(3)).incRetriesCount();
@@ -234,10 +230,9 @@ class TelemetryPersisterTest {
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(DoorSensorEvent.class.getSimpleName(), 4);
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(ThermostatEvent.class.getSimpleName(), 3);
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger, times(2)).recordAvgEventPersistenceTime(anyLong());
         verify(kpiMetricLogger).incNonRetriableSkippedErrorsCount(NullPointerException.class.getSimpleName());
         verify(deadLetterProducer).send(List.of(mapSmartPlug(smartPlug8, 7), mapSmartPlug(smartPlug9, 8), mapSmartPlug(smartPlug10, 9),
                 mapSmartPlug(smartPlug11, 10), mapSmartPlug(smartPlug12, 11)));
@@ -262,10 +257,9 @@ class TelemetryPersisterTest {
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
         verify(kpiMetricLogger).recordsFindEventsQueryTime(eq(SmartPlugEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).recordInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(DoorSensorEvent.class.getSimpleName(), 4);
-        verify(kpiMetricLogger).incInsertedEventsInOneOperation(ThermostatEvent.class.getSimpleName(), 3);
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(DoorSensorEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger).recordBatchInsertTime(eq(ThermostatEvent.class.getSimpleName()), anyLong());
+        verify(kpiMetricLogger, times(2)).recordAvgEventPersistenceTime(anyLong());
         verify(kpiMetricLogger).incFatalErrorsCount(UncategorizedMongoDbException.class.getSimpleName());
     }
 }

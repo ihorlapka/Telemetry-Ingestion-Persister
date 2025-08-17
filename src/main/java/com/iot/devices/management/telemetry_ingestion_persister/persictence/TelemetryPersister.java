@@ -122,12 +122,15 @@ public class TelemetryPersister {
                 bulkOps.insert(eventsToStore);
                 final long startTime = currentTimeMillis();
                 final BulkWriteResult result = bulkOps.execute();
-                kpiMetricLogger.recordInsertTime(clazz.getSimpleName(), currentTimeMillis() - startTime);
-                kpiMetricLogger.incInsertedEventsInOneOperation(clazz.getSimpleName(), result.getInsertedCount());
+                final long batchPersistenceTimeMs = currentTimeMillis() - startTime;
+                kpiMetricLogger.recordBatchInsertTime(clazz.getSimpleName(), batchPersistenceTimeMs);
+                kpiMetricLogger.recordAvgEventPersistenceTime(batchPersistenceTimeMs / Math.max(1, result.getInsertedCount()));
+                kpiMetricLogger.recordInsertedEventsNumber(clazz.getSimpleName(), result.getInsertedCount());
                 final List<Long> succeedOffsets = eventsToStore.stream().map(TelemetryEvent::getOffset).toList();
                 offsets.addAll(succeedOffsets);
-                log.info("Inserted: {} {} items, target: {}, offsets {} will be committed",
-                        result.getInsertedCount(), clazz.getSimpleName(), eventsToStore.size(), succeedOffsets);
+                log.info("Inserted: {} {} items, target: {}, avgEventTime: {}, offsets size {} will be committed",
+                        result.getInsertedCount(), clazz.getSimpleName(), eventsToStore.size(),
+                        batchPersistenceTimeMs / Math.max(1, result.getInsertedCount()), succeedOffsets.size());
                 return;
             } catch (TransientDataAccessException | MongoSocketException | MongoTimeoutException | MongoWriteException | MongoBulkWriteException e) {
                 final List<TelemetryEvent> storedEvents = new ArrayList<>(eventsToStore);
