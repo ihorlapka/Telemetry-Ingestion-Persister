@@ -1,8 +1,11 @@
 package com.iot.devices.management.telemetry_ingestion_persister.persictence;
 
 import com.iot.devices.*;
+import com.iot.devices.management.telemetry_ingestion_persister.kafka.DeadLetterProducer;
+import com.iot.devices.management.telemetry_ingestion_persister.metrics.KpiMetricLogger;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.*;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.repo.*;
+import com.mongodb.*;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +13,9 @@ import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
+import org.springframework.data.mongodb.InvalidMongoDbApiUsageException;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -17,9 +23,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.Supplier;
 
 import static com.iot.devices.management.telemetry_ingestion_persister.mapping.EventsMapper.*;
+import static java.lang.Thread.sleep;
 import static java.util.Comparator.comparingLong;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -38,6 +44,9 @@ public class RepositoryBasedTelemetryPersister implements TelemetriesPersister {
     private final SoilMoistureSensorRepository soilMoistureSensorRepository;
     private final TemperatureSensorRepository temperatureSensorRepository;
     private final ThermostatRepository thermostatRepository;
+    private final RetryProperties retryProperties;
+    private final KpiMetricLogger kpiMetricLogger;
+    private final DeadLetterProducer deadLetterProducer;
 
     @Override
     public Optional<OffsetAndMetadata> persist(List<ConsumerRecord<String, SpecificRecord>> records) {
@@ -46,33 +55,26 @@ public class RepositoryBasedTelemetryPersister implements TelemetriesPersister {
         for (ConsumerRecord<String, SpecificRecord> record : records) {
             switch (record.value()) {
                 case Thermostat t -> futures.add(CompletableFuture.runAsync(() -> persistIfNotPresent(offsets, record,
-                        () -> thermostatRepository.findByDeviceIdAndLastUpdated(UUID.fromString(t.getDeviceId()), t.getLastUpdated()),
-                        () -> thermostatRepository.insert(mapThermostat(t, record.offset()))), executorService
-                ));
+                        thermostatRepository, mapThermostat(t, record.offset())), executorService)
+                );
                 case DoorSensor ds -> futures.add(CompletableFuture.runAsync(() -> persistIfNotPresent(offsets, record,
-                        () -> doorSensorRepository.findByDeviceIdAndLastUpdated(UUID.fromString(ds.getDeviceId()), ds.getLastUpdated()),
-                        () -> doorSensorRepository.insert(mapDoorSensor(ds, record.offset()))), executorService
-                ));
+                        doorSensorRepository, mapDoorSensor(ds, record.offset())), executorService)
+                );
                 case SmartLight sl -> futures.add(CompletableFuture.runAsync(() -> persistIfNotPresent(offsets, record,
-                        () -> smartLightRepository.findByDeviceIdAndLastUpdated(UUID.fromString(sl.getDeviceId()), sl.getLastUpdated()),
-                        () -> smartLightRepository.insert(mapSmartLight(sl, record.offset()))), executorService
+                        smartLightRepository, mapSmartLight(sl, record.offset())), executorService
                 ));
                 case EnergyMeter em -> futures.add(CompletableFuture.runAsync(() -> persistIfNotPresent(offsets, record,
-                        () -> energyMeterRepository.findByDeviceIdAndLastUpdated(UUID.fromString(em.getDeviceId()), em.getLastUpdated()),
-                        () -> energyMeterRepository.insert(mapEnergyMeter(em, record.offset()))), executorService
-                ));
+                        energyMeterRepository, mapEnergyMeter(em, record.offset())), executorService)
+                );
                 case SmartPlug sp -> futures.add(CompletableFuture.runAsync(() -> persistIfNotPresent(offsets, record,
-                        () -> smartPlugRepository.findByDeviceIdAndLastUpdated(UUID.fromString(sp.getDeviceId()), sp.getLastUpdated()),
-                        () -> smartPlugRepository.insert(mapSmartPlug(sp, record.offset()))), executorService
-                ));
+                        smartPlugRepository, mapSmartPlug(sp, record.offset())), executorService)
+                );
                 case TemperatureSensor ts -> futures.add(CompletableFuture.runAsync(() -> persistIfNotPresent(offsets, record,
-                        () -> temperatureSensorRepository.findByDeviceIdAndLastUpdated(UUID.fromString(ts.getDeviceId()), ts.getLastUpdated()),
-                        () -> temperatureSensorRepository.insert(mapTemperatureSensor(ts, record.offset()))), executorService
-                ));
+                        temperatureSensorRepository, mapTemperatureSensor(ts, record.offset())), executorService)
+                );
                 case SoilMoistureSensor sms -> futures.add(CompletableFuture.runAsync(() -> persistIfNotPresent(offsets, record,
-                        () -> soilMoistureSensorRepository.findByDeviceIdAndLastUpdated(UUID.fromString(sms.getDeviceId()), sms.getLastUpdated()),
-                        () -> soilMoistureSensorRepository.insert(mapSoilMoistureSensor(sms, record.offset()))), executorService
-                ));
+                        soilMoistureSensorRepository, mapSoilMoistureSensor(sms, record.offset())), executorService)
+                );
                 default -> throw new IllegalArgumentException("Unknown device type detected");
             }
         }
@@ -83,20 +85,48 @@ public class RepositoryBasedTelemetryPersister implements TelemetriesPersister {
     }
 
     private <T extends TelemetryEvent> void persistIfNotPresent(Set<Long> offsets, ConsumerRecord<String, SpecificRecord> record,
-                                                                Supplier<Optional<T>> findTelemetryInDb,
-                                                                Supplier<T> insert) {
-        try {
-            final Optional<T> telemetryInDb = findTelemetryInDb.get();
-            if (telemetryInDb.isEmpty()) {
-                final T inserted = insert.get();
-                log.info("Inserted event: {}, offset:{}", inserted, record.offset());
-            } else {
-                log.info("Event is already stored {}, offset: {}", telemetryInDb, record.offset());
+                                                                TelemetryRepository<T> mongoRepository, T event) {
+        int currentTry = 0;
+        Exception lastException = null;
+        while (currentTry < retryProperties.getMaxAttempts()) {
+            try {
+                if (currentTry > 0) {
+                    sleep(retryProperties.getWaitDuration());
+                    kpiMetricLogger.incRetriesCount();
+                }
+                final Optional<T> telemetryInDb = mongoRepository.findByDeviceIdAndLastUpdated(event.getDeviceId(), event.getLastUpdated());
+                if (telemetryInDb.isEmpty()) {
+                    final T inserted = mongoRepository.insert(event);
+                    log.info("Inserted event: {}, offset:{}", inserted, record.offset());
+                } else {
+                    log.info("Event is already stored {}, offset: {}", telemetryInDb, record.offset());
+                }
+                offsets.add(record.offset());
+            } catch (TransientDataAccessException
+                     | RecoverableDataAccessException
+                     | MongoSocketException
+                     | MongoNotPrimaryException
+                     | MongoNodeIsRecoveringException
+                     | MongoCursorNotFoundException
+                     | MongoTimeoutException e) {
+                log.warn("Failed to persist on try {}/{}, offset={}. Waiting {} ms before next retry, event: {}",
+                        currentTry + 1, retryProperties.getMaxAttempts(), record.offset(), retryProperties.getWaitDuration(), record.value());
+                lastException = e;
+                currentTry++;
+            } catch (IllegalArgumentException | NullPointerException | InvalidMongoDbApiUsageException |
+                     MongoCommandException e) {
+                log.error("A non-retriable error occurred while persisting events, sending them to dead letter topic", e);
+                kpiMetricLogger.incNonRetriableSkippedErrorsCount(e.getClass().getSimpleName());
+                deadLetterProducer.send(List.of(event), offsets);
+                return;
+            } catch (Exception e) {
+                log.error("Fatal error occurred while persisting record. Failing immediately, no offsets will be committed", e);
+                kpiMetricLogger.incFatalErrorsCount(e.getClass().getSimpleName());
+                throw new RuntimeException("Fatal error", e);
             }
-            offsets.add(record.offset());
-        } catch (Exception e) {
-            log.error("Something bad happened!", e);//TODO: implement!
         }
+        log.error("All {} attempts to persist record failed.", retryProperties.getMaxAttempts(), lastException);
+        throw new RuntimeException("Update failed after max retries.", lastException);
     }
 
     @PreDestroy

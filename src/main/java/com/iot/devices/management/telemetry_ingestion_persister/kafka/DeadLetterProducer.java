@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -38,22 +39,23 @@ public class DeadLetterProducer {
         kafkaClientMetrics.bindTo(meterRegistry);
     }
 
-    public void send(List<TelemetryEvent> events) {
+    public <E extends TelemetryEvent> void send(List<E> events, Set<Long> offsets) {
         log.info("Sending to dead-letter-topic events={}", events);
-        for (TelemetryEvent event : events) {
+        for (E event : events) {
             final ProducerRecord<String, SpecificRecord> record = new ProducerRecord<>(producerProperties.getTopic(),
                     event.getDeviceId().toString(), (SpecificRecord) event);
-            kafkaProducer.send(record, getCallback(event));
+            kafkaProducer.send(record, getCallback(event, offsets));
         }
     }
 
-    private Callback getCallback(TelemetryEvent event) {
+    private <E extends TelemetryEvent> Callback getCallback(E event, Set<Long> offsets) {
         return (metadata, exception) -> {
             if (exception != null) {
                 log.error("Failed to send event to Kafka dead-letter topic: event={}, error={}", event, exception.getMessage(), exception);
             } else {
                 log.debug("Successfully sent event to dead-letter topic: topic={}, partition={}, offset={}",
                         metadata.topic(), metadata.partition(), metadata.offset());
+                offsets.add(metadata.offset());
             }
         };
     }

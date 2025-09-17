@@ -13,7 +13,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.data.mongodb.InvalidMongoDbApiUsageException;
@@ -24,6 +23,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.function.BiFunction;
 
 import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.DoorSensorEvent.DOOR_SENSORS_COLLECTION;
@@ -55,7 +55,8 @@ public class TelemetryPersister {
     private final KpiMetricLogger kpiMetricLogger;
 
 
-    public Optional<OffsetAndMetadata> persist(DeviceType deviceType, List<ConsumerRecord<String, SpecificRecord>> recordsPerType, Set<Long> offsets) {
+    public Optional<OffsetAndMetadata> persist(DeviceType deviceType, List<ConsumerRecord<String, SpecificRecord>> recordsPerType) {
+        final ConcurrentSkipListSet<Long> offsets = new ConcurrentSkipListSet<>();
         switch (deviceType) {
             case THERMOSTAT ->
                     persistWithRetries(recordsPerType, ThermostatEvent.class, offsets, THERMOSTATS_COLLECTION,
@@ -82,9 +83,9 @@ public class TelemetryPersister {
         return getMaxConsecutiveOffset(offsets).map(OffsetAndMetadata::new);
     }
 
-    private <T extends SpecificRecord> void persistWithRetries(List<ConsumerRecord<String, T>> deviceTypeRecords, Class<? extends TelemetryEvent> clazz,
-                                                               Set<Long> offsets, String collectionName, BiFunction<T, Long, TelemetryEvent> mapping) {
-        final List<TelemetryEvent> eventsToStore = new ArrayList<>();
+    private <T extends SpecificRecord, E extends TelemetryEvent> void persistWithRetries(List<ConsumerRecord<String, T>> deviceTypeRecords, Class<E> clazz,
+                                                                                         Set<Long> offsets, String collectionName, BiFunction<T, Long, E> mapping) {
+        final List<E> eventsToStore = new ArrayList<>();
         int currentTry = 0;
         Exception lastException = null;
         while (currentTry < retryProperties.getMaxAttempts()) {
@@ -93,9 +94,9 @@ public class TelemetryPersister {
                     sleep(retryProperties.getWaitDuration());
                     kpiMetricLogger.incRetriesCount();
                 }
-                final List<TelemetryEvent> events = mapEvents(filterRecordsWithCommittedOffsets(deviceTypeRecords, offsets), mapping);
-                final List<? extends TelemetryEvent> existingEvents = findAlreadyPresentEventsInDb(clazz, events);
-                final List<TelemetryEvent> eventsToBeInserted = filterPresentInDbEvents(offsets, events, existingEvents);
+                final List<E> events = mapEvents(filterRecordsWithCommittedOffsets(deviceTypeRecords, offsets), mapping);
+                final List<E> existingEvents = findAlreadyPresentEventsInDb(clazz, events);
+                final List<E> eventsToBeInserted = filterPresentInDbEvents(offsets, events, existingEvents);
                 if (!eventsToBeInserted.isEmpty()) {
                     eventsToBeInserted.stream().filter(event -> !eventsToStore.contains(event)).forEach(eventsToStore::add);
                 }
@@ -109,9 +110,7 @@ public class TelemetryPersister {
                 final long startTime = currentTimeMillis();
                 final BulkWriteResult result = bulkOps.execute();
                 final long batchPersistenceTimeMs = currentTimeMillis() - startTime;
-                kpiMetricLogger.recordBatchInsertTime(clazz.getSimpleName(), batchPersistenceTimeMs);
-                kpiMetricLogger.recordAvgEventPersistenceTime(batchPersistenceTimeMs / Math.max(1, result.getInsertedCount()));
-                kpiMetricLogger.recordInsertedEventsNumber(clazz.getSimpleName(), result.getInsertedCount());
+                logKpis(clazz, batchPersistenceTimeMs, result);
                 final List<Long> succeedOffsets = eventsToStore.stream().map(TelemetryEvent::getOffset).toList();
                 offsets.addAll(succeedOffsets);
                 log.info("Inserted: {} {} items, target: {}, avgEventTime: {}, offsets size {} will be committed",
@@ -119,10 +118,10 @@ public class TelemetryPersister {
                         batchPersistenceTimeMs / Math.max(1, result.getInsertedCount()), succeedOffsets.size());
                 return;
             } catch (TransientDataAccessException | MongoSocketException | MongoTimeoutException | MongoWriteException | MongoBulkWriteException e) {
-                final List<TelemetryEvent> storedEvents = new ArrayList<>(eventsToStore);
+                final List<E> storedEvents = new ArrayList<>(eventsToStore);
                 if (e instanceof MongoBulkWriteException bulkWriteException) {
                     for (BulkWriteError error : bulkWriteException.getWriteErrors()) {
-                        TelemetryEvent failedEvent = eventsToStore.get(error.getIndex());
+                        E failedEvent = eventsToStore.get(error.getIndex());
                         storedEvents.remove(failedEvent);
                     }
                     if (!storedEvents.isEmpty()) {
@@ -141,7 +140,7 @@ public class TelemetryPersister {
                 log.error("A non-retriable error occurred while persisting events, sending them to dead letter topic", e);
                 kpiMetricLogger.incNonRetriableSkippedErrorsCount(e.getClass().getSimpleName());
                 if (!eventsToStore.isEmpty()) {
-                    deadLetterProducer.send(eventsToStore);
+                    deadLetterProducer.send(eventsToStore, offsets);
                 }
                 return;
             } catch (Exception e) {
@@ -161,13 +160,14 @@ public class TelemetryPersister {
                 .toList();
     }
 
-    private <T extends SpecificRecord, E> List<E> mapEvents(List<ConsumerRecord<String, T>> deviceTypeRecords, BiFunction<T, Long, E> mapping) {
+    private <T extends SpecificRecord, E extends TelemetryEvent> List<E> mapEvents(List<ConsumerRecord<String, T>> deviceTypeRecords,
+                                                                                   BiFunction<T, Long, E> mapping) {
         return deviceTypeRecords.stream()
                 .map(record -> mapping.apply(record.value(), record.offset()))
                 .toList();
     }
 
-    private List<? extends TelemetryEvent> findAlreadyPresentEventsInDb(Class<? extends TelemetryEvent> clazz, List<TelemetryEvent> events) {
+    private <E extends TelemetryEvent> List<E> findAlreadyPresentEventsInDb(Class<E> clazz, List<E> events) {
         final List<Criteria> criteriaList = events.stream()
                 .map(event -> Criteria.where(ID_FIELD).is(event.getDeviceId()).and(LAST_UPDATED_FIELD).is(event.getLastUpdated()))
                 .toList();
@@ -175,7 +175,7 @@ public class TelemetryPersister {
         query.fields().include(ID_FIELD);
         query.fields().include(LAST_UPDATED_FIELD);
         final long startTime = currentTimeMillis();
-        final List<? extends TelemetryEvent> telemetryEvents = mongoTemplate.find(query, clazz);
+        final List<E> telemetryEvents = mongoTemplate.find(query, clazz);
         kpiMetricLogger.recordsFindEventsQueryTime(clazz.getSimpleName(), currentTimeMillis() - startTime);
         if (!telemetryEvents.isEmpty()) {
             kpiMetricLogger.incAlreadyStoredEvents(telemetryEvents.size());
@@ -183,10 +183,9 @@ public class TelemetryPersister {
         return telemetryEvents;
     }
 
-    private List<TelemetryEvent> filterPresentInDbEvents(Set<Long> offsets, List<TelemetryEvent> events,
-                                                         List<? extends TelemetryEvent> existingEvents) {
-        final List<TelemetryEvent> filteredEvents = new ArrayList<>();
-        for (TelemetryEvent event : events) {
+    private <E extends TelemetryEvent> List<E> filterPresentInDbEvents(Set<Long> offsets, List<E> events, List<E> existingEvents) {
+        final List<E> filteredEvents = new ArrayList<>();
+        for (E event : events) {
             if (existingEvents.contains(event)) {
                 log.info("Skipping already stored event: {}, offset={} will be commited", event, event.getOffset());
                 ofNullable(event.getOffset()).ifPresent(offsets::add);
@@ -197,7 +196,7 @@ public class TelemetryPersister {
         return filteredEvents;
     }
 
-    private <T extends SpecificRecord> List<Long> getOffsets(List<TelemetryEvent> events) {
+    private <E extends TelemetryEvent> List<Long> getOffsets(List<E> events) {
         return events.stream()
                 .map(TelemetryEvent::getOffset)
                 .toList();
@@ -222,5 +221,12 @@ public class TelemetryPersister {
             return Optional.of(offsetToCommit + 1);
         }
         return empty();
+    }
+
+
+    private <E extends TelemetryEvent> void logKpis(Class<E> clazz, long batchPersistenceTimeMs, BulkWriteResult result) {
+        kpiMetricLogger.recordBatchInsertTime(clazz.getSimpleName(), batchPersistenceTimeMs);
+        kpiMetricLogger.recordAvgEventPersistenceTime(batchPersistenceTimeMs / Math.max(1, result.getInsertedCount()));
+        kpiMetricLogger.recordInsertedEventsNumber(clazz.getSimpleName(), result.getInsertedCount());
     }
 }

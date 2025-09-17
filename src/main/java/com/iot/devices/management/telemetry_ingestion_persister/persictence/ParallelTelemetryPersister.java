@@ -28,16 +28,18 @@ public class ParallelTelemetryPersister implements TelemetriesPersister {
 
     public Optional<OffsetAndMetadata> persist(List<ConsumerRecord<String, SpecificRecord>> records) {
         final Map<DeviceType, List<ConsumerRecord<String, SpecificRecord>>> recordsByEventType = groupRecordsByDeviceType(records);
-        final ConcurrentSkipListSet<Long> offsets = new ConcurrentSkipListSet<>();
-        final List<CompletableFuture<Optional<OffsetAndMetadata>>> futures = new ArrayList<>(recordsByEventType.size());
+        final ConcurrentSkipListSet<OffsetAndMetadata> offsets = new ConcurrentSkipListSet<>(comparingLong(OffsetAndMetadata::offset));
+        final List<CompletableFuture<Void>> futures = new ArrayList<>(recordsByEventType.size());
         for (Map.Entry<DeviceType, List<ConsumerRecord<String, SpecificRecord>>> entry : recordsByEventType.entrySet()) {
             final DeviceType deviceType = entry.getKey();
             final List<ConsumerRecord<String, SpecificRecord>> recordsPerType = entry.getValue();
-            futures.add(CompletableFuture.supplyAsync(() -> telemetryPersister.persist(deviceType, recordsPerType, offsets), executorService));
+            futures.add(CompletableFuture.runAsync(
+                    () -> telemetryPersister.persist(deviceType, recordsPerType).ifPresent(offsets::add),
+                    executorService)
+            );
         }
         CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
         return offsets.stream()
-                .map(OffsetAndMetadata::new)
                 .max(comparingLong(OffsetAndMetadata::offset));
     }
 
