@@ -9,7 +9,8 @@ spring:
     restart:
       enabled: false
   profiles:
-    active: mongoRepositories
+#    active: mongoRepositories
+    active: mongoTemplate
   data:
     mongodb:
       uuid-representation: standard
@@ -48,7 +49,7 @@ kafka:
       enable.auto.commit: false
       max.poll.records: 10000
       max.poll.interval: 300000
-      fetch.min.bytes: 128
+      fetch.min.bytes: 256
       fetch.max.wait.ms: 5000
       value.subject.name.strategy: io.confluent.kafka.serializers.subject.TopicRecordNameStrategy
   producer:
@@ -69,6 +70,7 @@ kafka:
       request.timeout.ms: 15000
       delivery.timeout.ms: 30000
       client.id: dead-letter-persists-producer
+      auto.register.schemas: false
 persister:
   retries:
     max.attempts: 15
