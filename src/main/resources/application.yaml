@@ -51,7 +51,7 @@ kafka:
       max.poll.interval: 300000
       fetch.min.bytes: 256
       fetch.max.wait.ms: 5000
-      value.subject.name.strategy: io.confluent.kafka.serializers.subject.TopicRecordNameStrategy
+      value.subject.name.strategy: io.confluent.kafka.serializers.subject.RecordNameStrategy
   producer:
     topic: dead-letter-telemetries-persists
     executor-termination-timeout-ms: 5000
