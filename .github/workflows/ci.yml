@@ -26,7 +26,7 @@ jobs:
         cache: maven
     - name: Build with Maven
       env:
-        GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
       run: mvn -B -e -U package --file pom.xml
     - name: Copy settings.xml to build context
       run: |
@@ -48,4 +48,4 @@ jobs:
         tags: ${{ secrets.DOCKER_USERNAME }}/iot-telemetry-ingestion-service:latest
         build-args: |
           GITHUB_ACTOR=${{ github.actor }}
-          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN=${{ secrets.GH_PACKAGES_TOKEN }}
