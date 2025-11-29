@@ -22,7 +22,7 @@ jobs:
         distribution: 'temurin'
         server-id: github
         settings-path: ${{ github.workspace }}
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ MAVEN_PUBLISH_TOKEN }}
     - name: Build with Maven
       run: mvn -B -e -X package --file pom.xml
     - name: Set up Docker Buildx
