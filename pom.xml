@@ -26,6 +26,10 @@
 			<id>confluent</id>
 			<url>https://packages.confluent.io/maven/</url>
 		</repository>
+		<repository>
+			<id>github</id>
+			<url>https://maven.pkg.github.com/ihorlapka/Device-Connector</url>
+		</repository>
 	</repositories>
 
 	<dependencies>
