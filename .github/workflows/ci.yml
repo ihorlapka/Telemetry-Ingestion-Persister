@@ -30,6 +30,10 @@ jobs:
         ls -la ${{ github.workspace }}
         echo "=== settings.xml ==="
         cat ${{ github.workspace }}/settings.xml
+    - name: Copy settings.xml to ~/.m2
+      run: |
+        mkdir -p ~/.m2
+        cp ${{ github.workspace }}/settings.xml ~/.m2/settings.xml
     - name: Build with Maven
       env:
         GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
