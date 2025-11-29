@@ -27,7 +27,7 @@ jobs:
     - name: Build with Maven
       env:
         GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-      run: mvn -B -e package --file pom.xml
+      run: mvn -B -e -U package --file pom.xml
     - name: Copy settings.xml to build context
       run: |
         mkdir -p ci
