@@ -21,17 +21,17 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
         server-id: github-device-connector
-        settings-path: ~/.m2/
+        settings-path: ${{ github.workspace }}
         token: ${{ secrets.GH_PACKAGES_TOKEN }}
         cache: maven
     - name: Build with Maven
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
       run: mvn -B -e -U package --file pom.xml
     - name: Copy settings.xml to build context
       run: |
         mkdir -p ci
-        cp ~/.m2/settings.xml ci/settings.xml
+        cp ${{ github.workspace }}/settings.xml ci/settings.xml
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3.11.1
     - name: Docker Login
