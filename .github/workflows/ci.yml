@@ -20,7 +20,7 @@ jobs:
       with:
         java-version: '21'
         distribution: 'temurin'
-        server-id: github
+        server-id: github-device-connector
         settings-path: ~/.m2/
         token: ${{ secrets.GH_PACKAGES_TOKEN }}
         cache: maven
