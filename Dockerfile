@@ -6,4 +6,5 @@ ENV GITHUB_ACTOR=$GITHUB_ACTOR
 ENV GITHUB_TOKEN=$GITHUB_TOKEN
 COPY pom.xml .
 COPY src ./src
-RUN mvn -B -U -DskipTests package
+COPY /ci/settings.xml /root/.m2/settings.xml
+RUN mvn -B -s /root/.m2/settings.xml -U -e -DskipTests package
