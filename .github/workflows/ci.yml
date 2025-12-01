@@ -24,10 +24,6 @@ jobs:
         settings-path: ${{ github.workspace }}
         token: ${{ secrets.GH_PACKAGES_TOKEN }}
         cache: maven
-    - name: Copy settings.xml to ~/.m2
-      run: |
-        mkdir -p ~/.m2
-        cp ${{ github.workspace }}/settings.xml ~/.m2/settings.xml
     - name: Build with Maven
       env:
         GITHUB_ACTOR: ${{ github.actor }}
