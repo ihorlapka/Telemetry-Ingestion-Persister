@@ -24,9 +24,6 @@ jobs:
         token: ${{ secrets.GH_PACKAGES_TOKEN }}
         cache: maven
     - name: Build with Maven
-      env:
-        GITHUB_ACTOR: ${{ github.actor }}
-        GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
       run: mvn -B -e -U package --file pom.xml
     - name: Copy settings.xml to build context
       run: |
