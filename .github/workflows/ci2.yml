@@ -20,55 +20,46 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+          settings-path: ${{ github.workspace }}
+          token: ${{ secrets.GH_PACKAGES_TOKEN }}
           cache: maven
-      - name: Configure Maven settings
-        run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml <<EOF
-          <settings>
-            <servers>
-              <server>
-                <id>github-device-connector</id>
-                <username>${MAVEN_USER}</username>
-                <password>${GH_PACKAGES_TOKEN}</password>
-              </server>
-              <server>
-                <id>github-telemetry-processor</id>
-                <username>${MAVEN_USER}</username>
-                <password>${GH_PACKAGES_TOKEN}</password>
-              </server>
-            </servers>
-            <profiles>
-              <profile>
-                <id>github-packages</id>
-                <repositories>
-                  <repository>
-                    <id>github-device-connector</id>
-                    <url>https://maven.pkg.github.com/${MAVEN_USER}/Device-Connector</url>
-                    <releases><enabled>true</enabled></releases>
-                    <snapshots><enabled>true</enabled></snapshots>
-                  </repository>
-                  <repository>
-                    <id>github-telemetry-processor</id>
-                    <url>https://maven.pkg.github.com/${MAVEN_USER}/Telemetry-Event-Processor</url>
-                    <releases><enabled>true</enabled></releases>
-                    <snapshots><enabled>true</enabled></snapshots>
-                  </repository>
-                </repositories>
-              </profile>
-            </profiles>
-            <activeProfiles>
-              <activeProfile>github-packages</activeProfile>
-            </activeProfiles>
-          </settings>
-          EOF
-        env:
-          MAVEN_USER: ${{ github.actor }}
-          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+#      - name: Configure Maven settings
+#        run: |
+#          mkdir -p ~/.m2
+#          cat > ~/.m2/settings.xml <<EOF
+#          <settings>
+#            <servers>
+#              <server>
+#                <id>github-device-connector</id>
+#                <username>${MAVEN_USER}</username>
+#                <password>${GH_PACKAGES_TOKEN}</password>
+#              </server>
+#            </servers>
+#            <profiles>
+#              <profile>
+#                <id>github-packages</id>
+#                <repositories>
+#                  <repository>
+#                    <id>github-device-connector</id>
+#                    <url>https://maven.pkg.github.com/${MAVEN_USER}/Device-Connector</url>
+#                    <releases><enabled>true</enabled></releases>
+#                    <snapshots><enabled>true</enabled></snapshots>
+#                  </repository>
+#                </repositories>
+#              </profile>
+#            </profiles>
+#            <activeProfiles>
+#              <activeProfile>github-packages</activeProfile>
+#            </activeProfiles>
+#          </settings>
+#          EOF
+#        env:
+#          MAVEN_USER: ${{ github.actor }}
+#          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
       - name: Copy settings.xml to build context
         run: |
           mkdir -p ci
-          cp ~/.m2/settings.xml ci/settings.xml
+          cp ${{ github.workspace }}/settings.xml ci/settings.xml
       - name: Build with Maven
         run: mvn -B -U -e -Pgithub-packages package -DskipTests --file pom.xml
         env:

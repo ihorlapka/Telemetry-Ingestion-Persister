@@ -24,12 +24,6 @@ jobs:
         settings-path: ${{ github.workspace }}
         token: ${{ secrets.GH_PACKAGES_TOKEN }}
         cache: maven
-    - name: Show settings.xml
-      run: |
-        echo "=== ${{ github.workspace }} ==="
-        ls -la ${{ github.workspace }}
-        echo "=== settings.xml ==="
-        cat ${{ github.workspace }}/settings.xml
     - name: Copy settings.xml to ~/.m2
       run: |
         mkdir -p ~/.m2
