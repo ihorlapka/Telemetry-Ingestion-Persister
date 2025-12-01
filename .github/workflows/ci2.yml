@@ -61,7 +61,7 @@ jobs:
           mkdir -p ci
           cp ${{ github.workspace }}/settings.xml ci/settings.xml
       - name: Build with Maven
-        run: mvn -B -U -e -Pgithub-packages package -DskipTests --file pom.xml
+        run: mvn -B -U -e -DskipTests --file pom.xml
         env:
           MAVEN_OPTS: -Xmx1024m
       - name: Set up Docker Buildx

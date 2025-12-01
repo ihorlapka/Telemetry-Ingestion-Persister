@@ -30,7 +30,8 @@ jobs:
         cp ${{ github.workspace }}/settings.xml ~/.m2/settings.xml
     - name: Build with Maven
       env:
-        GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
       run: mvn -B -e -U package --file pom.xml
     - name: Copy settings.xml to build context
       run: |
