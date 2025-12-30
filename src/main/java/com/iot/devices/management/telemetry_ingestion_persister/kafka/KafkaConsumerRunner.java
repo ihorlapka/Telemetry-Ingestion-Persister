@@ -54,13 +54,12 @@ public class KafkaConsumerRunner {
     }
 
     private void runConsumer() {
+        if (!isSubscribed) {
+            log.info("Subscribing...");
+            subscribe();
+        }
         while (!isShutdown) {
             try {
-                if (!isSubscribed) {
-                    log.info("Subscribing...");
-                    subscribe();
-                }
-                log.info("Starting to poll messages...");
                 final ConsumerRecords<String, SpecificRecord> records = kafkaConsumer.poll(Duration.of(consumerProperties.getPollTimeoutMs(), MILLIS));
                 log.info("Received {} messages", records.count());
                 kpiMetricLogger.recordRecordsInOnePoll(records.count());
@@ -78,14 +77,22 @@ public class KafkaConsumerRunner {
                     kafkaConsumer.commitAsync(offsetsToCommit, getOffsetCommitCallback());
                 }
             } catch (WakeupException e) {
-                log.info("Consumer poll woken up");
+                log.info("Consumer poll is woken up");
+                if (!isShutdown) {
+                    log.error("Unexpected kafka consumer poll wakeup", e);
+                    throw e;
+                }
             } catch (Exception e) {
                 log.error("Unexpected exception in consumer loop ", e);
+            } finally {
                 closeConsumer();
+                if (!isShutdown) {
+                    log.info("Subscribing after kafka consumer was closed...");
+                    subscribe();
+                }
             }
         }
-        log.info("Exited kafka consumer loop");
-        closeConsumer();
+        log.info("Exited kafka consumer polling loop");
     }
 
     private void subscribe() {
@@ -114,10 +121,6 @@ public class KafkaConsumerRunner {
                     kafkaConsumerStatusMonitor.set(!partitions.isEmpty());
                 }
             });
-            while (!isSubscribed && partitions.isEmpty()) {
-                log.info("Polling for partitions assignment...");
-                kafkaConsumer.poll(Duration.of(consumerProperties.getPollTimeoutMs(), MILLIS));
-            }
         } catch (Exception e) {
             log.error("Unexpected error occurred during subscribing", e);
             throw e;
@@ -141,6 +144,10 @@ public class KafkaConsumerRunner {
     private void closeConsumer() {
         try {
             if (kafkaConsumer != null) {
+                if (isShutdown) {
+                    log.info("Kafka consumer poll wakeup...");
+                    kafkaConsumer.wakeup();
+                }
                 log.info("Closing kafka consumer");
                 kafkaConsumer.close();
                 log.info("Kafka consumer is closed");
