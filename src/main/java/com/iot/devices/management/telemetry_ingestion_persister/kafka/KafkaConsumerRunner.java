@@ -84,7 +84,6 @@ public class KafkaConsumerRunner {
                 }
             } catch (Exception e) {
                 log.error("Unexpected exception in consumer loop ", e);
-            } finally {
                 closeConsumer();
                 if (!isShutdown) {
                     log.info("Subscribing after kafka consumer was closed...");
