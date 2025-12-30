@@ -114,6 +114,10 @@ public class KafkaConsumerRunner {
                     kafkaConsumerStatusMonitor.set(!partitions.isEmpty());
                 }
             });
+            while (!isSubscribed && partitions.isEmpty()) {
+                log.info("Polling for partitions assignment...");
+                kafkaConsumer.poll(Duration.of(consumerProperties.getPollTimeoutMs(), MILLIS));
+            }
         } catch (Exception e) {
             log.error("Unexpected error occurred during subscribing", e);
             throw e;
