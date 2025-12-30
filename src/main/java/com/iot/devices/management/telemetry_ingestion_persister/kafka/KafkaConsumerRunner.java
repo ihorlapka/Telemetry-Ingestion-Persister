@@ -61,10 +61,8 @@ public class KafkaConsumerRunner {
         while (!isShutdown) {
             try {
                 final ConsumerRecords<String, SpecificRecord> records = kafkaConsumer.poll(Duration.of(consumerProperties.getPollTimeoutMs(), MILLIS));
-                log.info("Received {} messages", records.count());
                 kpiMetricLogger.recordRecordsInOnePoll(records.count());
                 final Set<TopicPartition> recordsPartitions = records.partitions();
-                log.info("Records' partitions: {}", recordsPartitions);
                 final Map<TopicPartition, List<ConsumerRecord<String, SpecificRecord>>> recordsPerPartition = recordsPartitions.stream()
                         .collect(toMap(Function.identity(), records::records));
 
