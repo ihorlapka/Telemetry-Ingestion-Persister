@@ -54,12 +54,12 @@ public class KafkaConsumerRunner {
     }
 
     private void runConsumer() {
+        if (!isSubscribed) {
+            log.info("Subscribing...");
+            subscribe();
+        }
         while (!isShutdown) {
             try {
-                if (!isSubscribed) {
-                    log.info("Subscribing...");
-                    subscribe();
-                }
                 final ConsumerRecords<String, SpecificRecord> records = kafkaConsumer.poll(Duration.of(consumerProperties.getPollTimeoutMs(), MILLIS));
                 kpiMetricLogger.recordRecordsInOnePoll(records.count());
                 final Set<TopicPartition> recordsPartitions = records.partitions();
@@ -75,40 +75,53 @@ public class KafkaConsumerRunner {
                     kafkaConsumer.commitAsync(offsetsToCommit, getOffsetCommitCallback());
                 }
             } catch (WakeupException e) {
-                log.info("Consumer poll woken up");
+                log.info("Consumer poll is woken up");
+                if (!isShutdown) {
+                    log.error("Unexpected kafka consumer poll wakeup", e);
+                    throw e;
+                }
             } catch (Exception e) {
                 log.error("Unexpected exception in consumer loop ", e);
                 closeConsumer();
+                if (!isShutdown) {
+                    log.info("Subscribing after kafka consumer was closed...");
+                    subscribe();
+                }
             }
         }
-        log.info("Exited kafka consumer loop");
-        closeConsumer();
+        log.info("Exited kafka consumer polling loop");
     }
 
     private void subscribe() {
-        final Properties properties = new Properties(consumerProperties.getProperties().size());
-        properties.putAll(consumerProperties.getProperties());
-        kafkaConsumer = new KafkaConsumer<>(properties);
-        kafkaClientMetrics = new KafkaClientMetrics(kafkaConsumer);
-        kafkaClientMetrics.bindTo(meterRegistry);
+        try {
+            final Properties properties = new Properties(consumerProperties.getProperties().size());
+            properties.putAll(consumerProperties.getProperties());
+            kafkaConsumer = new KafkaConsumer<>(properties);
+            kafkaClientMetrics = new KafkaClientMetrics(kafkaConsumer);
+            kafkaClientMetrics.bindTo(meterRegistry);
+            log.info("Kafka Consumer is created");
 
-        kafkaConsumer.subscribe(List.of(consumerProperties.getTopic()), new ConsumerRebalanceListener() {
-            @Override
-            public void onPartitionsRevoked(Collection<TopicPartition> collection) {
-                log.info("Partitions revoked");
-                partitions.clear();
-                isSubscribed = false;
-                kafkaConsumerStatusMonitor.set(false);
-            }
+            kafkaConsumer.subscribe(List.of(consumerProperties.getTopic()), new ConsumerRebalanceListener() {
+                @Override
+                public void onPartitionsRevoked(Collection<TopicPartition> collection) {
+                    log.info("Partitions revoked");
+                    partitions.clear();
+                    isSubscribed = false;
+                    kafkaConsumerStatusMonitor.set(false);
+                }
 
-            @Override
-            public void onPartitionsAssigned(Collection<TopicPartition> collection) {
-                log.info("Partitions assigned: {}", collection);
-                partitions.addAll(collection);
-                isSubscribed = true;
-                kafkaConsumerStatusMonitor.set(!partitions.isEmpty());
-            }
-        });
+                @Override
+                public void onPartitionsAssigned(Collection<TopicPartition> collection) {
+                    log.info("Partitions assigned: {}", collection);
+                    partitions.addAll(collection);
+                    isSubscribed = true;
+                    kafkaConsumerStatusMonitor.set(!partitions.isEmpty());
+                }
+            });
+        } catch (Exception e) {
+            log.error("Unexpected error occurred during subscribing", e);
+            throw e;
+        }
     }
 
 
@@ -128,6 +141,10 @@ public class KafkaConsumerRunner {
     private void closeConsumer() {
         try {
             if (kafkaConsumer != null) {
+                if (isShutdown) {
+                    log.info("Kafka consumer poll wakeup...");
+                    kafkaConsumer.wakeup();
+                }
                 log.info("Closing kafka consumer");
                 kafkaConsumer.close();
                 log.info("Kafka consumer is closed");
