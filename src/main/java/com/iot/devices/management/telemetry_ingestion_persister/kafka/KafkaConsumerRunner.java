@@ -60,9 +60,12 @@ public class KafkaConsumerRunner {
                     log.info("Subscribing...");
                     subscribe();
                 }
+                log.info("Starting to poll messages...");
                 final ConsumerRecords<String, SpecificRecord> records = kafkaConsumer.poll(Duration.of(consumerProperties.getPollTimeoutMs(), MILLIS));
+                log.info("Received {} messages", records.count());
                 kpiMetricLogger.recordRecordsInOnePoll(records.count());
                 final Set<TopicPartition> recordsPartitions = records.partitions();
+                log.info("Records' partitions: {}", recordsPartitions);
                 final Map<TopicPartition, List<ConsumerRecord<String, SpecificRecord>>> recordsPerPartition = recordsPartitions.stream()
                         .collect(toMap(Function.identity(), records::records));
 
@@ -86,29 +89,35 @@ public class KafkaConsumerRunner {
     }
 
     private void subscribe() {
-        final Properties properties = new Properties(consumerProperties.getProperties().size());
-        properties.putAll(consumerProperties.getProperties());
-        kafkaConsumer = new KafkaConsumer<>(properties);
-        kafkaClientMetrics = new KafkaClientMetrics(kafkaConsumer);
-        kafkaClientMetrics.bindTo(meterRegistry);
+        try {
+            final Properties properties = new Properties(consumerProperties.getProperties().size());
+            properties.putAll(consumerProperties.getProperties());
+            kafkaConsumer = new KafkaConsumer<>(properties);
+            kafkaClientMetrics = new KafkaClientMetrics(kafkaConsumer);
+            kafkaClientMetrics.bindTo(meterRegistry);
+            log.info("Kafka Consumer is created");
 
-        kafkaConsumer.subscribe(List.of(consumerProperties.getTopic()), new ConsumerRebalanceListener() {
-            @Override
-            public void onPartitionsRevoked(Collection<TopicPartition> collection) {
-                log.info("Partitions revoked");
-                partitions.clear();
-                isSubscribed = false;
-                kafkaConsumerStatusMonitor.set(false);
-            }
+            kafkaConsumer.subscribe(List.of(consumerProperties.getTopic()), new ConsumerRebalanceListener() {
+                @Override
+                public void onPartitionsRevoked(Collection<TopicPartition> collection) {
+                    log.info("Partitions revoked");
+                    partitions.clear();
+                    isSubscribed = false;
+                    kafkaConsumerStatusMonitor.set(false);
+                }
 
-            @Override
-            public void onPartitionsAssigned(Collection<TopicPartition> collection) {
-                log.info("Partitions assigned: {}", collection);
-                partitions.addAll(collection);
-                isSubscribed = true;
-                kafkaConsumerStatusMonitor.set(!partitions.isEmpty());
-            }
-        });
+                @Override
+                public void onPartitionsAssigned(Collection<TopicPartition> collection) {
+                    log.info("Partitions assigned: {}", collection);
+                    partitions.addAll(collection);
+                    isSubscribed = true;
+                    kafkaConsumerStatusMonitor.set(!partitions.isEmpty());
+                }
+            });
+        } catch (Exception e) {
+            log.error("Unexpected error occurred during subscribing", e);
+            throw e;
+        }
     }
 
 
