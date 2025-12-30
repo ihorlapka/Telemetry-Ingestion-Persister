@@ -45,7 +45,7 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/iot-telemetry-ingestion-service:3
+        tags: ${{ secrets.DOCKER_USERNAME }}/iot-telemetry-ingestion-service:latest
         build-args: |
           GITHUB_ACTOR=${{ github.actor }}
           GITHUB_TOKEN=${{ secrets.GH_PACKAGES_TOKEN }}
