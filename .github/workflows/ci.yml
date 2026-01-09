@@ -45,7 +45,30 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/iot-telemetry-ingestion-service:latest
+        tags: ${{ secrets.DOCKER_USERNAME }}/iot-telemetry-ingestion-service:${{ github.run_number }}
         build-args: |
           GITHUB_ACTOR=${{ github.actor }}
           GITHUB_TOKEN=${{ secrets.GH_PACKAGES_TOKEN }}
+
+    - name: Checkout k8s manifests repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ secrets.DOCKER_USERNAME }}/Kubernetes-Manifests
+        token: ${{ secrets.MANIFESTS_REPO_TOKEN }}
+        path: Kubernetes-Manifests
+    - name: Update image tag in kustomization.yaml
+      run: |
+        cd Kubernetes-Manifests/iot-telemetry-ingestion-persister/overlays/dev
+        kustomize edit set image ${{ secrets.DOCKER_USERNAME }}/iot-telemetry-ingestion-service:${{ github.run_number }}
+    - name: Commit and push manifest changes
+      run: |
+        cd Kubernetes-Manifests
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        if ! git diff --quiet; then
+          git add .
+          git commit -m "chore: update image tag to ${{ github.run_number }}"
+          git push
+        else
+          echo "No changes to commit"
+        fi
