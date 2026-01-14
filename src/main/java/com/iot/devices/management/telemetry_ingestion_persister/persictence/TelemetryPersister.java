@@ -6,13 +6,15 @@ import com.iot.devices.management.telemetry_ingestion_persister.metrics.KpiMetri
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.*;
 import com.mongodb.*;
-import com.mongodb.bulk.BulkWriteError;
+import com.mongodb.bulk.BulkWriteInsert;
 import com.mongodb.bulk.BulkWriteResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.bson.BsonString;
+import org.bson.BsonValue;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.data.mongodb.InvalidMongoDbApiUsageException;
@@ -85,7 +87,6 @@ public class TelemetryPersister {
 
     private <T extends SpecificRecord, E extends TelemetryEvent> void persistWithRetries(List<ConsumerRecord<String, T>> deviceTypeRecords, Class<E> clazz,
                                                                                          Set<Long> offsets, String collectionName, BiFunction<T, Long, E> mapping) {
-        final List<E> eventsToStore = new ArrayList<>();
         int currentTry = 0;
         Exception lastException = null;
         while (currentTry < retryProperties.getMaxAttempts()) {
@@ -94,54 +95,41 @@ public class TelemetryPersister {
                     sleep(retryProperties.getWaitDuration());
                     kpiMetricLogger.incRetriesCount();
                 }
-                final List<E> events = mapEvents(filterRecordsWithCommittedOffsets(deviceTypeRecords, offsets), mapping);
-                final List<E> existingEvents = findAlreadyPresentEventsInDb(clazz, events);
-                final List<E> eventsToBeInserted = filterPresentInDbEvents(offsets, events, existingEvents);
-                if (!eventsToBeInserted.isEmpty()) {
-                    eventsToBeInserted.stream().filter(event -> !eventsToStore.contains(event)).forEach(eventsToStore::add);
-                }
-                if (eventsToStore.isEmpty()) {
-                    log.info("All events are already stored, all offsets will be committed");
+                final List<E> eventsToBeInserted = getEventsToBeInserted(deviceTypeRecords, clazz, offsets, mapping);
+                if (eventsToBeInserted.isEmpty()) {
+                    log.info("All events had already been stored, their offsets will be committed");
                     deviceTypeRecords.stream().map(ConsumerRecord::offset).forEach(offsets::add);
                     return;
                 }
                 final BulkOperations bulkOps = mongoTemplate.bulkOps(UNORDERED, clazz, collectionName);
-                bulkOps.insert(eventsToStore);
+                bulkOps.insert(eventsToBeInserted);
                 final long startTime = currentTimeMillis();
                 final BulkWriteResult result = bulkOps.execute();
                 final long batchPersistenceTimeMs = currentTimeMillis() - startTime;
                 logKpis(clazz, batchPersistenceTimeMs, result);
-                final List<Long> succeedOffsets = eventsToStore.stream().map(TelemetryEvent::getOffset).toList();
+                final List<Long> succeedOffsets = eventsToBeInserted.stream().map(TelemetryEvent::getOffset).toList();
                 offsets.addAll(succeedOffsets);
-                log.info("Inserted: {} {} items, target: {}, avgEventTime: {}, offsets size {} will be committed",
-                        result.getInsertedCount(), clazz.getSimpleName(), eventsToStore.size(),
+                log.info("Inserted: {} {} items, target: {}, avgEventTime: {}, {} offsets will be committed",
+                        result.getInsertedCount(), clazz.getSimpleName(), eventsToBeInserted.size(),
                         batchPersistenceTimeMs / Math.max(1, result.getInsertedCount()), succeedOffsets.size());
                 return;
             } catch (TransientDataAccessException | MongoSocketException | MongoTimeoutException | MongoWriteException | MongoBulkWriteException e) {
-                final List<E> storedEvents = new ArrayList<>(eventsToStore);
                 if (e instanceof MongoBulkWriteException bulkWriteException) {
-                    for (BulkWriteError error : bulkWriteException.getWriteErrors()) {
-                        E failedEvent = eventsToStore.get(error.getIndex());
-                        storedEvents.remove(failedEvent);
-                    }
-                    if (!storedEvents.isEmpty()) {
-                        kpiMetricLogger.incStoredEventsDuringError(clazz.getSimpleName(), storedEvents.size());
-                        storedEvents.forEach(event -> offsets.add(event.getOffset()));
-                        log.info("Persistence of events resulted with error: {}, but {} events were stored {}, their offsets may be committed",
-                                e.getMessage(), storedEvents.size(), storedEvents);
+                    final int insertedCount = bulkWriteException.getWriteResult().getInsertedCount();
+                    if (insertedCount > 0) {
+                        kpiMetricLogger.incStoredEventsDuringError(clazz.getSimpleName(), insertedCount);
+                        log.info("Persistence of events resulted with error: {}, but {} events were stored ids: {}",
+                                e.getMessage(), insertedCount, getInsertedIds(bulkWriteException));
                     }
                 }
-                eventsToStore.removeAll(storedEvents);
-                log.warn("Failed to persist on try {}/{}, offsets={}. Waiting {} ms before next retry, events {}",
-                        currentTry + 1, retryProperties.getMaxAttempts(), getOffsets(eventsToStore), retryProperties.getWaitDuration(), eventsToStore);
+                log.warn("Failed to persist on try {}/{}. Waiting {} ms before next retry",
+                        currentTry + 1, retryProperties.getMaxAttempts(), retryProperties.getWaitDuration());
                 lastException = e;
                 currentTry++;
             } catch (IllegalArgumentException | NullPointerException | InvalidMongoDbApiUsageException | MongoCommandException e) {
                 log.error("A non-retriable error occurred while persisting events, sending them to dead letter topic", e);
                 kpiMetricLogger.incNonRetriableSkippedErrorsCount(e.getClass().getSimpleName());
-                if (!eventsToStore.isEmpty()) {
-                    deadLetterProducer.send(eventsToStore, offsets);
-                }
+                deadLetterProducer.send(getEventsToBeInserted(deviceTypeRecords, clazz, offsets, mapping), offsets);
                 return;
             } catch (Exception e) {
                 log.error("Fatal error occurred while persisting record. Failing immediately, no offsets will be committed", e);
@@ -153,11 +141,11 @@ public class TelemetryPersister {
         throw new RuntimeException("Update failed after max retries.", lastException);
     }
 
-    private <T extends SpecificRecord> List<ConsumerRecord<String, T>> filterRecordsWithCommittedOffsets(List<ConsumerRecord<String, T>> deviceTypeRecords,
-                                                                                                         Set<Long> offsets) {
-        return deviceTypeRecords.stream()
-                .filter(record -> !offsets.contains(record.offset()))
-                .toList();
+    private <T extends SpecificRecord, E extends TelemetryEvent> List<E> getEventsToBeInserted(List<ConsumerRecord<String, T>> deviceTypeRecords, Class<E> clazz,
+                                                                                               Set<Long> offsets, BiFunction<T, Long, E> mapping) {
+        final List<E> events = mapEvents(deviceTypeRecords, mapping);
+        final List<E> existingEvents = findAlreadyPresentEventsInDb(clazz, events);
+        return filterPresentInDbEvents(offsets, events, existingEvents);
     }
 
     private <T extends SpecificRecord, E extends TelemetryEvent> List<E> mapEvents(List<ConsumerRecord<String, T>> deviceTypeRecords,
@@ -175,12 +163,12 @@ public class TelemetryPersister {
         query.fields().include(ID_FIELD);
         query.fields().include(LAST_UPDATED_FIELD);
         final long startTime = currentTimeMillis();
-        final List<E> telemetryEvents = mongoTemplate.find(query, clazz);
+        final List<E> telemetryEventsInDb = mongoTemplate.find(query, clazz);
         kpiMetricLogger.recordsFindEventsQueryTime(clazz.getSimpleName(), currentTimeMillis() - startTime);
-        if (!telemetryEvents.isEmpty()) {
-            kpiMetricLogger.incAlreadyStoredEvents(telemetryEvents.size());
+        if (!telemetryEventsInDb.isEmpty()) {
+            kpiMetricLogger.incAlreadyStoredEvents(telemetryEventsInDb.size());
         }
-        return telemetryEvents;
+        return telemetryEventsInDb;
     }
 
     private <E extends TelemetryEvent> List<E> filterPresentInDbEvents(Set<Long> offsets, List<E> events, List<E> existingEvents) {
@@ -194,12 +182,6 @@ public class TelemetryPersister {
             }
         }
         return filteredEvents;
-    }
-
-    private <E extends TelemetryEvent> List<Long> getOffsets(List<E> events) {
-        return events.stream()
-                .map(TelemetryEvent::getOffset)
-                .toList();
     }
 
     private Optional<Long> getMaxConsecutiveOffset(Set<Long> persistedOffsets) {
@@ -223,6 +205,13 @@ public class TelemetryPersister {
         return empty();
     }
 
+    private List<String> getInsertedIds(MongoBulkWriteException bulkWriteException) {
+        return bulkWriteException.getWriteResult().getInserts().stream()
+                .map(BulkWriteInsert::getId)
+                .map(BsonValue::asString)
+                .map(BsonString::getValue)
+                .toList();
+    }
 
     private <E extends TelemetryEvent> void logKpis(Class<E> clazz, long batchPersistenceTimeMs, BulkWriteResult result) {
         kpiMetricLogger.recordBatchInsertTime(clazz.getSimpleName(), batchPersistenceTimeMs);

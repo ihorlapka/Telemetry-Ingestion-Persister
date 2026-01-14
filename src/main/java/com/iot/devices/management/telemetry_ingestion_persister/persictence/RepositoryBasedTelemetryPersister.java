@@ -61,8 +61,8 @@ public class RepositoryBasedTelemetryPersister implements TelemetriesPersister {
                         doorSensorRepository, mapDoorSensor(ds, record.offset())), executorService)
                 );
                 case SmartLight sl -> futures.add(CompletableFuture.runAsync(() -> persistIfNotPresent(offsets, record,
-                        smartLightRepository, mapSmartLight(sl, record.offset())), executorService
-                ));
+                        smartLightRepository, mapSmartLight(sl, record.offset())), executorService)
+                );
                 case EnergyMeter em -> futures.add(CompletableFuture.runAsync(() -> persistIfNotPresent(offsets, record,
                         energyMeterRepository, mapEnergyMeter(em, record.offset())), executorService)
                 );
@@ -102,6 +102,7 @@ public class RepositoryBasedTelemetryPersister implements TelemetriesPersister {
                     log.info("Event is already stored {}, offset: {}", telemetryInDb, record.offset());
                 }
                 offsets.add(record.offset());
+                return;
             } catch (TransientDataAccessException
                      | RecoverableDataAccessException
                      | MongoSocketException

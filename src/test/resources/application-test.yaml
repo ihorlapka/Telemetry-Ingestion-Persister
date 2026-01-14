@@ -1,9 +1,9 @@
 server:
   servlet:
-    context-path: /iot-registry
+    context-path: /telemetries-persister
 spring:
   application:
-    name: registry-service
+    name: telemetry-ingestion-persister
   devtools:
     restart:
       enabled: false

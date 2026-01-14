@@ -10,6 +10,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -22,17 +23,14 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.KafkaContainer; //TODO: migrate to .kafka. instead of containers!!!
+import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
@@ -139,10 +137,12 @@ class KafkaConsumerRunnerTest {
 
         List<String> deviceIds = asList(deviceId1, deviceId2, deviceId3);
 
-        when(persister.persist(any())).thenThrow(
-                new RuntimeException("Something bad happened 1"),
-                new RuntimeException("Something bad happened 2"),
-                new RuntimeException("Something bad happened 3"));
+        when(persister.persist(any()))
+                .thenThrow(
+                        new RuntimeException("Something bad happened 1"),
+                        new RuntimeException("Something bad happened 2"),
+                        new RuntimeException("Something bad happened 3"))
+                .thenReturn(Optional.of(new OffsetAndMetadata(3)));
 
         Instant nowTime = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         DoorSensor doorSensor = new DoorSensor(deviceId1, OPEN, 85, false,
