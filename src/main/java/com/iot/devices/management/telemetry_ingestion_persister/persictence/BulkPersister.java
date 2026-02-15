@@ -18,6 +18,7 @@ import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.function.BiFunction;
@@ -29,6 +30,7 @@ import static java.util.Optional.ofNullable;
 import static org.springframework.data.mongodb.core.BulkOperations.BulkMode.UNORDERED;
 
 @Slf4j
+@Component
 @RequiredArgsConstructor
 public class BulkPersister {
 
