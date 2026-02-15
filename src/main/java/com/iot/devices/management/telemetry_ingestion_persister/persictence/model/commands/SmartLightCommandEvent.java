@@ -1,6 +1,7 @@
-package com.iot.devices.management.telemetry_ingestion_persister.persictence.model;
+package com.iot.devices.management.telemetry_ingestion_persister.persictence.model.commands;
 
-import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceStatus;
+
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.PersistentEvent;
 import lombok.*;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.Transient;
@@ -17,30 +18,30 @@ import static org.springframework.data.mongodb.core.timeseries.Granularity.MINUT
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(of = {"deviceId", "lastUpdated"})
-@Document(collection = SmartPlugEvent.SMART_PLUGS_COLLECTION)
+@EqualsAndHashCode(of = "commandId")
+@Document(collection = SmartLightCommandEvent.SMART_LIGHT_COMMANDS_COLLECTION)
 @TimeSeries(
-        timeField = "lastUpdated",
+        timeField = "createdAt",
         metaField = "deviceId",
         granularity = MINUTES
 )
-public class SmartPlugEvent implements PersistentEvent {
+public class SmartLightCommandEvent implements PersistentEvent {
 
-    public static final String SMART_PLUGS_COLLECTION = "smart_plugs";
+    public static final String SMART_LIGHT_COMMANDS_COLLECTION = "smart_light_commands";
     @Id
+    private UUID commandId;
     private UUID deviceId;
     private Boolean isOn;
-    private Float voltage;
-    private Float current;
-    private Float powerUsage;
-    private DeviceStatus status;
-    private String firmwareVersion;
+    private Integer brightness;
+    private String colour;
+    private String mode;
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-    private Instant lastUpdated;
+    private Instant createdAt;
     @Transient
     private Long offset;
 
+    @Override
     public Instant getTimestamp() {
-        return lastUpdated;
+        return createdAt;
     }
 }

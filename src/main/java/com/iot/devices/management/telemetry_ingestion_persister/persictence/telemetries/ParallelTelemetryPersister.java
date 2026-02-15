@@ -1,4 +1,4 @@
-package com.iot.devices.management.telemetry_ingestion_persister.persictence;
+package com.iot.devices.management.telemetry_ingestion_persister.persictence.telemetries;
 
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 import java.util.concurrent.*;
 
-import static com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType.getDeviceTypeByName;
+import static com.iot.devices.management.telemetry_ingestion_persister.persictence.enums.DeviceType.getDeviceTypeByTelemetryName;
 import static java.util.Comparator.comparingLong;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toList;
@@ -45,7 +45,7 @@ public class ParallelTelemetryPersister implements TelemetriesPersister {
 
     private Map<DeviceType, List<ConsumerRecord<String, SpecificRecord>>> groupRecordsByDeviceType(List<ConsumerRecord<String, SpecificRecord>> records) {
         return records.stream().collect(groupingBy(
-                record -> getDeviceTypeByName(record.value().getSchema().getName()),
+                record -> getDeviceTypeByTelemetryName(record.value().getSchema().getName()),
                 LinkedHashMap::new,
                 toList()));
     }

@@ -1,8 +1,9 @@
-package com.iot.devices.management.telemetry_ingestion_persister.persictence;
+package com.iot.devices.management.telemetry_ingestion_persister.persictence.telemetries;
 
 import com.iot.devices.*;
 import com.iot.devices.management.telemetry_ingestion_persister.kafka.DeadLetterProducer;
 import com.iot.devices.management.telemetry_ingestion_persister.metrics.KpiMetricLogger;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.RetryProperties;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.*;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.repo.*;
 import com.mongodb.*;
@@ -84,8 +85,8 @@ public class RepositoryBasedTelemetryPersister implements TelemetriesPersister {
                 .max(comparingLong(OffsetAndMetadata::offset));
     }
 
-    private <T extends TelemetryEvent> void persistIfNotPresent(Set<Long> offsets, ConsumerRecord<String, SpecificRecord> record,
-                                                                TelemetryRepository<T> mongoRepository, T event) {
+    private <T extends PersistentEvent> void persistIfNotPresent(Set<Long> offsets, ConsumerRecord<String, SpecificRecord> record,
+                                                                 TelemetryRepository<T> mongoRepository, T event) {
         int currentTry = 0;
         Exception lastException = null;
         while (currentTry < retryProperties.getMaxAttempts()) {
@@ -94,7 +95,7 @@ public class RepositoryBasedTelemetryPersister implements TelemetriesPersister {
                     sleep(retryProperties.getWaitDuration());
                     kpiMetricLogger.incRetriesCount();
                 }
-                final Optional<T> telemetryInDb = mongoRepository.findByDeviceIdAndLastUpdated(event.getDeviceId(), event.getLastUpdated());
+                final Optional<T> telemetryInDb = mongoRepository.findByDeviceIdAndLastUpdated(event.getDeviceId(), event.getTimestamp());
                 if (telemetryInDb.isEmpty()) {
                     final T inserted = mongoRepository.insert(event);
                     log.info("Inserted event: {}, offset:{}", inserted, record.offset());

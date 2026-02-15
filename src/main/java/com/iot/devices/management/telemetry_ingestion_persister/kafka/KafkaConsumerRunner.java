@@ -2,7 +2,8 @@ package com.iot.devices.management.telemetry_ingestion_persister.kafka;
 
 import com.iot.devices.management.telemetry_ingestion_persister.kafka.properties.KafkaConsumerProperties;
 import com.iot.devices.management.telemetry_ingestion_persister.metrics.KpiMetricLogger;
-import com.iot.devices.management.telemetry_ingestion_persister.persictence.TelemetriesPersister;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.commands.CommandsPersister;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.telemetries.TelemetriesPersister;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
 import jakarta.annotation.PostConstruct;
@@ -39,6 +40,7 @@ public class KafkaConsumerRunner {
     private volatile boolean isSubscribed = false;
 
     private final TelemetriesPersister telemetryPersister;
+    private final CommandsPersister commandsPersister;
     private final KafkaConsumerProperties consumerProperties;
     private final AtomicBoolean kafkaConsumerStatusMonitor;
     private final MeterRegistry meterRegistry;
@@ -68,8 +70,17 @@ public class KafkaConsumerRunner {
 
                 final Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>(recordsPerPartition.size());
                 for (Map.Entry<TopicPartition, List<ConsumerRecord<String, SpecificRecord>>> entry : recordsPerPartition.entrySet()) {
-                    final Optional<OffsetAndMetadata> offsetToCommit = telemetryPersister.persist(entry.getValue());
-                    offsetToCommit.ifPresent(offset -> offsetsToCommit.put(entry.getKey(), offset));
+                    final String topic = entry.getKey().topic();
+
+                    if (topic.equals(consumerProperties.getCommandsTopic())) {
+                        commandsPersister.persist(entry.getValue()).ifPresent(offset -> offsetsToCommit.put(entry.getKey(), offset));
+                    }
+                    else if (topic.equals(consumerProperties.getTelemetriesTopic())) {
+                        telemetryPersister.persist(entry.getValue()).ifPresent(offset -> offsetsToCommit.put(entry.getKey(), offset));
+                    }
+                    else {
+                        log.warn("Persisting for records from topic: {} is not implemented!", topic);
+                    }
                 }
                 if (!offsetsToCommit.isEmpty()) {
                     kafkaConsumer.commitAsync(offsetsToCommit, getOffsetCommitCallback());
@@ -101,7 +112,7 @@ public class KafkaConsumerRunner {
             kafkaClientMetrics.bindTo(meterRegistry);
             log.info("Kafka Consumer is created");
 
-            kafkaConsumer.subscribe(List.of(consumerProperties.getTopic()), new ConsumerRebalanceListener() {
+            kafkaConsumer.subscribe(List.of(consumerProperties.getTelemetriesTopic(), consumerProperties.getCommandsTopic()), new ConsumerRebalanceListener() {
                 @Override
                 public void onPartitionsRevoked(Collection<TopicPartition> collection) {
                     log.info("Partitions revoked");

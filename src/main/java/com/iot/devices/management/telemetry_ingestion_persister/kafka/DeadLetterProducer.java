@@ -1,7 +1,7 @@
 package com.iot.devices.management.telemetry_ingestion_persister.kafka;
 
 import com.iot.devices.management.telemetry_ingestion_persister.kafka.properties.KafkaProducerProperties;
-import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.TelemetryEvent;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.PersistentEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
 import jakarta.annotation.PostConstruct;
@@ -39,7 +39,7 @@ public class DeadLetterProducer {
         kafkaClientMetrics.bindTo(meterRegistry);
     }
 
-    public <E extends TelemetryEvent> void send(List<E> events, Set<Long> offsets) {
+    public <E extends PersistentEvent> void send(List<E> events, Set<Long> offsets) {
         log.info("Sending to dead-letter-topic events={}", events);
         for (E event : events) {
             final ProducerRecord<String, SpecificRecord> record = new ProducerRecord<>(producerProperties.getTopic(),
@@ -48,7 +48,7 @@ public class DeadLetterProducer {
         }
     }
 
-    private <E extends TelemetryEvent> Callback getCallback(E event, Set<Long> offsets) {
+    private <E extends PersistentEvent> Callback getCallback(E event, Set<Long> offsets) {
         return (metadata, exception) -> {
             if (exception != null) {
                 log.error("Failed to send event to Kafka dead-letter topic: event={}, error={}", event, exception.getMessage(), exception);

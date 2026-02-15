@@ -3,9 +3,9 @@ package com.iot.devices.management.telemetry_ingestion_persister.persictence.mod
 import java.time.Instant;
 import java.util.UUID;
 
-public interface TelemetryEvent {
+public interface PersistentEvent {
 
     UUID getDeviceId();
-    Instant getLastUpdated();
+    Instant getTimestamp();
     Long getOffset();
 }

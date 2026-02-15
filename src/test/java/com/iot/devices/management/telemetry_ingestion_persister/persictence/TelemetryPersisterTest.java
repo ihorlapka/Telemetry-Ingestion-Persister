@@ -6,6 +6,8 @@ import com.iot.devices.management.telemetry_ingestion_persister.metrics.KpiMetri
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.DoorSensorEvent;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.SmartPlugEvent;
 import com.iot.devices.management.telemetry_ingestion_persister.persictence.model.ThermostatEvent;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.telemetries.ParallelTelemetryPersister;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.telemetries.TelemetryPersister;
 import com.mongodb.MongoBulkWriteException;
 import com.mongodb.ServerAddress;
 import com.mongodb.bulk.BulkWriteError;
@@ -68,7 +70,7 @@ class TelemetryPersisterTest {
     KpiMetricLogger kpiMetricLogger;
 
     @InjectMocks
-    TelemetryPersister telemetryPersister;
+    BulkPersister bulkPersister;
 
     ParallelTelemetryPersister parallelTelemetryPersister;
 
@@ -133,7 +135,7 @@ class TelemetryPersisterTest {
         records.add(record11);
         records.add(record12);
 
-        parallelTelemetryPersister = new ParallelTelemetryPersister(telemetryPersister);
+        parallelTelemetryPersister = new ParallelTelemetryPersister(new TelemetryPersister(bulkPersister));
     }
 
     @AfterEach

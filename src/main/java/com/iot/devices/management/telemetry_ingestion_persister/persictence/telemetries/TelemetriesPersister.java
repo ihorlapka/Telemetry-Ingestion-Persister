@@ -1,4 +1,4 @@
-package com.iot.devices.management.telemetry_ingestion_persister.persictence;
+package com.iot.devices.management.telemetry_ingestion_persister.persictence.telemetries;
 
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;

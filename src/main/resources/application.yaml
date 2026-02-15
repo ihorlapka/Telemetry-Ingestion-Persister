@@ -34,7 +34,8 @@ management:
         include: "*"
 kafka:
   consumer:
-    topic: iot-devices-data
+    telemetries-topic: iot-devices-data
+    commands-topic: iot-devices-commands
     poll-timeout-ms: 100
     restart-timeout-ms: 10000
     executor-termination-timeout-ms: 5000

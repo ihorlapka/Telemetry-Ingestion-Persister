@@ -4,7 +4,8 @@ import com.iot.devices.*;
 import com.iot.devices.management.telemetry_ingestion_persister.health.HealthConfig;
 import com.iot.devices.management.telemetry_ingestion_persister.kafka.properties.KafkaConsumerProperties;
 import com.iot.devices.management.telemetry_ingestion_persister.metrics.KpiMetricLogger;
-import com.iot.devices.management.telemetry_ingestion_persister.persictence.ParallelTelemetryPersister;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.commands.ParallelCommandsPersister;
+import com.iot.devices.management.telemetry_ingestion_persister.persictence.telemetries.ParallelTelemetryPersister;
 import io.micrometer.core.instrument.MockClock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -59,6 +60,8 @@ class KafkaConsumerRunnerTest {
 
     @MockitoBean
     ParallelTelemetryPersister persister;
+    @MockitoBean
+    ParallelCommandsPersister commandsPersister;
     @MockitoBean
     KpiMetricLogger kpiMetricLogger;
 

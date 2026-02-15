@@ -26,8 +26,11 @@ public class KafkaConsumerProperties {
 
     private Map<String, String> properties = new HashMap<>();
 
-    @Value("${" + PROPERTIES_PREFIX + ".topic}")
-    private String topic;
+    @Value("${" + PROPERTIES_PREFIX + ".telemetries-topic}")
+    private String telemetriesTopic;
+
+    @Value("${" + PROPERTIES_PREFIX + ".commands-topic}")
+    private String commandsTopic;
 
     @Value("${" + PROPERTIES_PREFIX + ".poll-timeout-ms}")
     private Long pollTimeoutMs;
