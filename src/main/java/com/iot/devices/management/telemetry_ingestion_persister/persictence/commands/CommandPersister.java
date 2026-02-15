@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,6 +23,7 @@ import static com.iot.devices.management.telemetry_ingestion_persister.persicten
 import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.SmartPlugEvent.SMART_PLUGS_COLLECTION;
 import static com.iot.devices.management.telemetry_ingestion_persister.persictence.model.commands.ThermostatCommandEvent.THERMOSTAT_COMMANDS_COLLECTION;
 
+@Component
 @RequiredArgsConstructor
 public class CommandPersister {
 
