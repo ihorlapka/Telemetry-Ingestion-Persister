@@ -115,16 +115,12 @@ public class RepositoryBasedTelemetryPersister implements TelemetriesPersister {
                         currentTry + 1, retryProperties.getMaxAttempts(), record.offset(), retryProperties.getWaitDuration(), record.value());
                 lastException = e;
                 currentTry++;
-            } catch (IllegalArgumentException | NullPointerException | InvalidMongoDbApiUsageException |
-                     MongoCommandException e) {
+            } catch (Exception e) {
                 log.error("A non-retriable error occurred while persisting events, sending them to dead letter topic", e);
                 kpiMetricLogger.incNonRetriableSkippedErrorsCount(e.getClass().getSimpleName());
                 deadLetterProducer.send(List.of(event), offsets);
+                offsets.add(record.offset());
                 return;
-            } catch (Exception e) {
-                log.error("Fatal error occurred while persisting record. Failing immediately, no offsets will be committed", e);
-                kpiMetricLogger.incFatalErrorsCount(e.getClass().getSimpleName());
-                throw new RuntimeException("Fatal error", e);
             }
         }
         log.error("All {} attempts to persist record failed.", retryProperties.getMaxAttempts(), lastException);

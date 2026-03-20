@@ -32,7 +32,6 @@ public class PrometheusKpiLogger implements KpiMetricLogger {
     private final Counter retriesCounter;
     private final Counter alreadyStoredEventsCounter;
     private final Counter insertedEventsDuringErrorCounter;
-    private final Counter fatalErrorsCounter;
 
     public PrometheusKpiLogger(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -47,10 +46,6 @@ public class PrometheusKpiLogger implements KpiMetricLogger {
 
         this.insertedEventsDuringErrorCounter = Counter.builder("tip_inserted_events_during_error_count")
                 .description("The number of events which were stored during one failed insert operation")
-                .register(meterRegistry);
-
-        this.fatalErrorsCounter = Counter.builder("tip_fatal_errors_count")
-                .description("The number of fatal errors")
                 .register(meterRegistry);
 
         Gauge.builder("tip_records_per_poll_gauge", recordsInOnePoll, AtomicInteger::get)
@@ -119,11 +114,6 @@ public class PrometheusKpiLogger implements KpiMetricLogger {
     @Override
     public void incStoredEventsDuringError(String eventType, int storedAmount) {
         insertedEventsDuringErrorCounter.increment();
-    }
-
-    @Override
-    public void incFatalErrorsCount(String errorName) {
-        fatalErrorsCounter.increment();
     }
 
     @Override

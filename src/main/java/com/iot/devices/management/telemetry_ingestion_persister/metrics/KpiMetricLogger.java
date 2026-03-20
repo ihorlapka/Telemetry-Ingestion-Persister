@@ -8,7 +8,6 @@ public interface KpiMetricLogger {
     void incAlreadyStoredEvents(int alreadyStoredEventsAmount);
     void recordAvgEventPersistenceTime(long timeMs);
     void incStoredEventsDuringError(String eventType, int storedAmount);
-    void incFatalErrorsCount(String errorName);
     void recordRecordsInOnePoll(int recordsNumber);
     void recordInsertedEventsNumber(String eventType, int insertedCount);
 }

@@ -13,7 +13,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.bson.BsonString;
 import org.bson.BsonValue;
 import org.springframework.dao.TransientDataAccessException;
-import org.springframework.data.mongodb.InvalidMongoDbApiUsageException;
 import org.springframework.data.mongodb.core.BulkOperations;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -84,16 +83,11 @@ public class BulkPersister {
                         currentTry + 1, retryProperties.getMaxAttempts(), retryProperties.getWaitDuration());
                 lastException = e;
                 currentTry++;
-            } catch (IllegalArgumentException | NullPointerException | InvalidMongoDbApiUsageException |
-                     MongoCommandException e) {
+            } catch (Exception e) {
                 log.error("A non-retriable error occurred while persisting events, sending them to dead letter topic", e);
                 kpiMetricLogger.incNonRetriableSkippedErrorsCount(e.getClass().getSimpleName());
                 deadLetterProducer.send(getEventsToBeInserted(deviceTypeRecords, clazz, offsets, mapping), offsets);
                 return;
-            } catch (Exception e) {
-                log.error("Fatal error occurred while persisting record. Failing immediately, no offsets will be committed", e);
-                kpiMetricLogger.incFatalErrorsCount(e.getClass().getSimpleName());
-                throw new RuntimeException("Fatal error", e);
             }
         }
         log.error("All {} attempts to persist record failed.", retryProperties.getMaxAttempts(), lastException);
